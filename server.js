@@ -301,7 +301,7 @@ function playerEject(p) {
 
 // Reventar con un virus (mismo esquema que los servidores abiertos tipo MultiOgar):
 //  - la celula ya sumo la masa del virus antes de llamar aqui
-//  - se parte en tantas piezas como quepan hasta maxCells (minimo masa de split por pieza)
+//  - se parte en el maximo de piezas posible hasta maxCells (cada pieza minimo ~10 de masa)
 //  - las piezas pequenas pesan como maximo virusPieceMass; si es una celula pequena se reparte parejo
 //  - si la masa que sobra es muy grande (> virusBigMass) se desprenden hasta 3 trozos grandes (mitades)
 function popCell(c) {
@@ -309,7 +309,7 @@ function popCell(c) {
   const room = CFG.maxCells - p.cells.length;
   if (room <= 0) return;
   const mass = c.r * c.r / 100;
-  const minMass = CFG.minSplitSize * CFG.minSplitSize / 100;
+  const minMass = CFG.decayMinSize * CFG.decayMinSize / 100;   // pieza minima ~10 de masa: se parte en el maximo de celdas posible
   const n = Math.min(room, Math.floor(mass / minMass) - 1);
   if (n < 1) return;
   const small = Math.min(mass / (n + 1), CFG.virusPieceMass);
