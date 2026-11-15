@@ -30,7 +30,7 @@ const CFG = {
   virusAmount: 24, virusMax: 49, virusSize: 100, virusFeed: 7, virusShot: 580,   // 30/60 * 0.81
   virusEatRatio: 1.1533,              // un virus solo te revienta si tu masa > 133% de la suya (sqrt(1.33) en radio)
   virusPieceMass: 36, virusBigMass: 466,   // masa de cada pedazo pequeno al reventar / masa sobrante para partirse en trozos grandes
-  startSize: 114.89, maxSize: 1500, maxCells: 16, minSplitSize: 59.16, minEjectSize: 59.16,
+  startSize: 10000, maxSize: 1500, maxCells: 16, minSplitSize: 59.16, minEjectSize: 59.16,
   splitBoost: 780, ejectSize: 36.06, ejectLoss: 1800, ejectBoost: 780, ejectCooldown: 2, ejectMax: 2000,
   eatRatio: 1.118, eatOverlap: 0.4,
   mergeSec: 30, mergeSizeK: 0.2,
