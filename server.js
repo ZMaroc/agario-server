@@ -30,7 +30,8 @@ const CFG = {
   virusAmount: 24, virusMax: 49, virusSize: 100, virusFeed: 7, virusShot: 580,   // 30/60 * 0.81
   virusEatRatio: 1.1533,              // un virus solo te revienta si tu masa > 133% de la suya (sqrt(1.33) en radio)
   virusPieceMass: 36, virusBigMass: 466,   // masa de cada pedazo pequeno al reventar / masa sobrante para partirse en trozos grandes
-  startSize: 10000, maxSize: 1500, maxCells: 16, minSplitSize: 59.16, minEjectSize: 59.16,
+  startSize: 114.89, botStartMass: 200, playerStartMass: 500,   // masa inicial: bots 200, jugadores reales 500 (radio = sqrt(masa*100))
+  maxSize: 1500, maxCells: 16, minSplitSize: 59.16, minEjectSize: 59.16,
   splitBoost: 780, ejectSize: 36.06, ejectLoss: 1800, ejectBoost: 780, ejectCooldown: 2, ejectMax: 2000,
   eatRatio: 1.118, eatOverlap: 0.4,
   mergeSec: 30, mergeSizeK: 0.2,
@@ -257,9 +258,10 @@ function newPlayer(name, bot) {
 
 function spawnPlayer(p) {
   if (p.cells.length) return null;
-  const s = freeSpot(CFG.startSize);
+  const r = Math.sqrt((p.bot ? CFG.botStartMass : CFG.playerStartMass) * 100);
+  const s = freeSpot(r);
   p.color = color();
-  const c = addNode(T_PLAYER, s.x, s.y, CFG.startSize, p.color, p);
+  const c = addNode(T_PLAYER, s.x, s.y, r, p.color, p);
   p.mx = s.x; p.my = s.y;
   return c;
 }
