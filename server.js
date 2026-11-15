@@ -1,14 +1,6 @@
 'use strict';
 // Agar.io private server (FFA + bots) for the current web client (protocol 23, unencrypted).
-// No dependencies:  node server.js [--port 4400] [--bots 15] [--password clave] [--cert cert.pem --key key.pem]
-//
-// Hosting (Render / Railway / Koyeb / Fly...):
-//   - El puerto se toma de la variable PORT.
-//   - La clave de acceso se toma de la variable PASSWORD (o --password).
-//   - Cualquier opcion de CFG se puede poner como variable AGAR_<NOMBRE>, ej: AGAR_BOTS=20, AGAR_NAME="Mi server".
-//   - GET /          -> pagina con el boton de instalar el userscript
-//   - GET /agar.user.js -> userscript de Tampermonkey (se genera con tu dominio)
-//   - GET /health    -> para pings de uptime
+// No dependencies:  node server.js [--port 4400] [--bots 15] [--cert cert.pem --key key.pem]
 
 const http = require('http');
 const https = require('https');
@@ -20,31 +12,24 @@ const CFG = {
   port: Number(process.env.PORT) || 4400,
   host: '0.0.0.0',
   cert: '', key: '',
-  password: process.env.PASSWORD || '',
   name: 'Private FFA',
-  adminPass: '6767', // clave para /login (tambien: AGAR_ADMINPASS=...)
-  maxClients: 200, maxPerIp: 8,
+  maxClients: 200, maxPerIp: 4,
   tickMs: 40,
   border: 7071,
   viewW: 1920, viewH: 1080, viewMult: 2.2,
   foodAmount: 1500, foodSpawnPerTick: 12, foodMin: 10, foodMax: 20,
-  virusAmount: 30, virusMax: 60, virusSize: 100, virusFedSize: 141.4, virusShot: 780,
-  startSize: 223.61, botStartSize: 141.42, // masa inicial: jugadores 500, bots 200 (masa = r*r/100)
-  maxSize: 1500, maxCells: 16,
-  minSplitSize: 59.16, minEjectSize: 59.16, // masa minima 35 (masa = r*r/100 -> r = sqrt(35*100))
+  virusAmount: 30, virusMax: 60, virusSize: 100, virusFeeds: 7, virusShot: 780, virusEatMassRatio: 1.33, popMinPiece: 16,
+  startSize: 223.61, botStartSize: 141.42, maxSize: 1500, maxCells: 16, minSplitSize: 59.16, minEjectSize: 59.16,
   splitBoost: 780, ejectSize: 36.06, ejectLoss: 1800, ejectBoost: 780, ejectCooldown: 2, ejectMax: 2000,
   eatRatio: 1.118, eatOverlap: 0.4,
   mergeSec: 30, mergeSizeK: 0.2,
   decayPerSec: 0.002, decayMinSize: 32,
   speedK: 2.2 * 40, speedPow: -0.439,
-  bots: 40, botRespawnTicks: 50,
+  bots: 15, botRespawnTicks: 50,
   leaderboardTicks: 25, nameMax: 15,
+  debug: 0,
 };
 
-for (const k of Object.keys(CFG)) {
-  const e = process.env['AGAR_' + k.toUpperCase()];
-  if (e !== undefined && e !== '') CFG[k] = typeof CFG[k] === 'number' ? Number(e) : e;
-}
 for (let i = 2; i < process.argv.length; i += 2) {
   const k = process.argv[i].replace(/^--/, ''), v = process.argv[i + 1];
   if (!(k in CFG) || v === undefined) { console.error('Unknown option ' + process.argv[i]); process.exit(1); }
@@ -52,45 +37,22 @@ for (let i = 2; i < process.argv.length; i += 2) {
 }
 
 const B = CFG.border;
-const BOT_NAMES = [
-  "ヅ ༺Mчѕтιc༻ ✦", "꧁〖Øδ〗 Jσкєя꧂ ☽", "♛℣ℜσgυє丶ℜσηιη♛ 焱彡", "꧁🔰 Sιrιυѕ꧂ ฬ", "⛧Şнινєя⛧ ๖ۣۜǤнσsτ༻ ✧",
-  "☣ ☠Pιχєℓ•Zєρђყя☠ 一", "ヅFαηgヅ ༺", "❥Şαναgє❥ 『』 ꙰", "⛧ƘΞcℓιρѕє⛧☣", "☣Fαℓcση☣ 夜۝",
-  "༺Tυηdяα༻ 刃༻", "✞TняαѕнΞBιѕнσρ✞ ™", "꧁ΛTняαѕн×Wσℓƒ꧂ ⚡", "༺Ňσvα༻ ☠", "☾ℜιƒт丶Øηyx☽ ⛧ 一",
-  "♚ ♛ØĐяαcσ♛一一惡終", "Fαℓcση ♛ ☽", "❥ ꧁Mσятαℓ꧂一毒", "💀Vαℓнαℓℓα💀☾", "⚔☠ ΛLуηχ⚔ ♛",
-  "〖Øδ〗 ΛTυηdяα•Şђคđσฬ 數", "☣ ヅℜυιηヅ 神", "✞Fαℓcση✞ 〖Øδ〗", "⚡ Qυαятz丶Øяαcℓє一夜", "༺Kяαкєη༻ ™ ฬ",
-  "✖ ♛XTυявσ♛ 亡", "♛Dσσм♛✪", "❥Vσιd❥ ꧁✭ ✖", "〖Øδ〗 ヅMανєяιcкヅ 神", "Şρєcтєя ☣",
-  "☠ΛHєχ☠ツ", "⚔Tєяяσя⚔꙰", "♚ ❥ƤŞєηтιηєℓŇσvα❥一夜", "『ΔĐяιƒт』 數ฬ", "🔰 ⚡Şтσям×Şкυℓℓ⚡ 魔",
-  "『Ňσvα×Qυαятz』™", "♛ ⛧Vєηαтяιχ Cчcℓσηє⛧一氷", "〖Şєηтιηєℓ×Sιrιυѕ〗 🔰", "❥ ༺ØвℓινισηVαℓнαℓℓα༻ ☣", "⚔Đιєѕєℓ⚔ 🜏 ✦",
-  "☠Lуηχ☠ ヅ ヅ", "༺XPуяσ×Λяcтιc༻一", "♛ ⚡ŦIηƒєяησ⚡一漻", "⛧Qυαятz⛧ ♚", "☣Ǥнσsτ☣✖",
-  "⚔VαηdαℓMσятαℓ⚔ ™", "〖Hαναc〗 翼⚔", "☾ ⚡FяσѕтĐαggєя⚡一魔", "💀Fαηg💀 ♛ ✦", "⚡Vєηαтяιχ⚡ 刃ฬ",
-  "⚡ΔŞαναgє⚡ 毒࿊", "⚡ƘŞкυℓℓ丶Iηƒєяησ⚡™", "MGR! ✌ ⚡Mιdαѕ⚡一數", "✞❥ ℜαρтσя✞ ✪", "❥🐉 ΔCђασѕ×ℜєαρєя❥ メ",
-  "💀Fяσѕт💀 🜏", "⛧ 💀Şтσям💀一魔", "⛧ŇσvαΞPιχєℓ⛧⚡", "♛Đяαcσ♛ ™ 🔰", "🐉 ☣ŦMσηαяcн丶Hყdяα☣ 翼",
-  "❥ℜαρтσяŞαναgє❥ 闇✪", "『ΛєтнєяŞђคđσฬ』 ༗✧", "☾ 💀CσмєtΞCσвяα💀一魂", "⚔ ☾Pυℓѕαя•Şнσgυη☽ ۝", "〖Øδ〗 ♛Đιєѕєℓ•Cяιмѕση♛ ✞",
-  "⚔Øηyx⚔☢", "⚡ℜєαρєя⚡ ƬψƬ ☢", "༺ℜσgυє༻ 幻꙰", "☠🐉 Mαмвα☠ ꙰", "✞Mσηαяcн✞ ☾",
-  "✈ ⚡ØTємρєѕт⚡ 刃", "꧁✭ ❥ƤCσвяα❥ 一", "⚔Mαgмα×Fαℓcση⚔ ❥ ヅ", "༺Iηƒєяησ༻ ☣ ✞", "☠Mσηαяcн丶Vєηαтяιχ☠⚡",
-  "๖ۣۜǤнσsτ༻ ⚡Ňєχυѕ×Cяιмѕση⚡一夜", "Şρєcтєя✞", "⛧ ☾Ňєυтяση☽一爱", "〖ŦIηƒєяησ〗۝", "ヅBιѕнσρMσятαℓヅ 爪么",
-  "꧁✭ ♛VØЯŦΞЖΞSιrιυѕ♛一玄", "☠Vαηdαℓ丶Đяαcσ☠⚡", "☣ ✞Şнσgυη✞一炎", "⚡ℜιƒт丶Bℓιgнт⚡ ⚔ ꙰", "💀Øяαcℓє💀 ๖ۣۜǤнσsτ༻",
-  "☣Ǥнσsτ丶Vєηαтяιχ☣ ☾", "🔰 ☣Øηyx☣一爱", "⚔ Λρєχ ฬ", "⚡Λzяαєℓ⚡么", "༺꧁✭ Pυℓѕαя Jσкєя༻ ツ",
-  "Λzяαєℓ ♛ ☢", "Gℓιтcн 〖Øδ〗", "〖🐉 Mιdαѕ〗 ™", "꧁ƤTυявσ꧂ 緑ฬ", "🜏 ⚡ŻŞρєcтєя⚡一覇",
-  "💀꧁✭ ŻMιяαgє💀 ⚔", "☣Tυηdяα×Cяιмѕση☣ ✈ ฬ", "🔥 Fυяу ۝", "༺ℜαρтσя丶Øвℓινιση༻⚔", "™ ☣Fαηg☣ ☽",
-  "☠ŻŇєυтяση☠ ฬ✖", "⚡☾ Ňιgнтмαяє⚡ ツ", "☣ ♛Fяσѕт♛一炎", "ƬψƬ ☢ ☠Tняαѕн Tυηdяα☠ ࿊", "〖Øδ〗 〖Pуяσ Sιrιυѕ〗 表",
-  "♚ ✞Hαναc•Cιηdєя✞ ꙰", "Mσятαℓ 〘🍩〙✈", "💀⛧ Hєχ💀 么", "⚡ ❥ℜαρтσя❥ ❥", "🐉 ☾ΛяcтιcΞJσкєя☽ ฬ",
-  "༺Ňιgнтмαяє༻ ☽", "☣Mαмвα•ℜσgυє☣ ✖ ☢", "✞Qυαятz✞ ƬψƬ ☢ ꙰", "Tυηdяα 神⚔", "⚡Bℓιgнт⚡ฬ",
-  "『Ňσvα』 ✖ ⚔", "☠Vαηdαℓ☠ 表么", "☣Fυяу☣ ☠", "☠Fяσѕт☠ 幻☽", "⚔ØGℓιтcн⚔ツ",
-];
+const BOT_NAMES = ['Nova', 'Pixel', 'Rex', 'Luna', 'Kiwi', 'Turbo', 'Mango', 'Zed', 'Coco', 'Blitz', 'Echo', 'Fizz', 'Gizmo', 'Halo', 'Indy',
+  'Jinx', 'Koda', 'Lynx', 'Momo', 'Nix', 'Onyx', 'Pogo', 'Quill', 'Rolo', 'Sumo', 'Taco', 'Uno', 'Vex', 'Wasp', 'Yeti'];
 
 //WEBSOCKET
 class Conn {
   constructor(sock, req) {
     this.sock = sock; this.req = req; this.buf = Buffer.alloc(0); this.frag = []; this.open = true;
-    this.onmessage = null; this.onclose = null; this.fop = 2;
+    this.onmessage = null; this.onclose = null;
     sock.on('data', (d) => this.data(d));
     sock.on('close', () => this.end());
     sock.on('error', () => this.end());
   }
-  end() {
+  end(why) {
     if (!this.open) return;
     this.open = false;
+    this.why = why || this.why || 'closed by client';
     try { this.sock.destroy(); } catch (e) { }
     if (this.onclose) this.onclose();
   }
@@ -103,22 +65,21 @@ class Conn {
       let len = b[1] & 127, o = 2;
       if (len === 126) { if (b.length < 4) return; len = b.readUInt16BE(2); o = 4; }
       else if (len === 127) { if (b.length < 10) return; len = Number(b.readBigUInt64BE(2)); o = 10; }
-      if (len > 4096 || !masked) return this.end();
+      if (len > 1 << 20 || !masked) return this.end('bad frame ' + len);
       const mo = o; o += 4;
       if (b.length < o + len) return;
       const p = Buffer.from(b.subarray(o, o + len));
       for (let i = 0; i < len; i++) p[i] ^= b[mo + (i & 3)];
       this.buf = b.subarray(o + len);
-      if (op === 8) return this.end();
+      if (op === 8) return this.end('client close ' + (p.length >= 2 ? p.readUInt16BE(0) : ''));
       if (op === 9) { this.raw(10, p); continue; }
       if (op === 10) continue;
-      if (op) this.fop = op;
       this.frag.push(p);
-      if (this.frag.length > 8) return this.end();
+      if (this.frag.length > 64) return this.end('too many fragments');
       if (fin) {
         const m = this.frag.length === 1 ? this.frag[0] : Buffer.concat(this.frag);
         this.frag = [];
-        if (this.onmessage) this.onmessage(m, this.fop);
+        if (this.onmessage) this.onmessage(m);
       }
     }
   }
@@ -162,7 +123,6 @@ let eatenNow = new Map();
 let moving = new Set();
 
 const rnd = (a, b) => a + Math.random() * (b - a);
-const massOf = (r) => r * r / 100;
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const gkey = (x, y) => (Math.floor(x / GS) + GOFF) * GW + Math.floor(y / GS) + GOFF;
 
@@ -296,7 +256,7 @@ function playerEject(p) {
     if (d < 1) { dx = 1; dy = 0; } else { dx /= d; dy /= d; }
     c.r = Math.sqrt(c.r * c.r - CFG.ejectLoss);
     const e = addNode(T_EJECT, c.x + dx * c.r, c.y + dy * c.r, CFG.ejectSize, p.color, p);
-    setBoost(e, Math.atan2(dy, dx) + rnd(-0.3, 0.3), CFG.ejectBoost);
+    setBoost(e, Math.atan2(dy, dx) + rnd(-0.12, 0.12), CFG.ejectBoost);
   }
 }
 
@@ -304,13 +264,22 @@ function popCell(c) {
   const p = c.owner;
   const room = CFG.maxCells - p.cells.length;
   if (room <= 0) return;
-  const mass = massOf(c.r);
-  const count = Math.min(room, Math.floor(mass / 35) - 1); // trozos nuevos: el maximo posible, cada trozo >= 35 de masa
+  let mass = c.r * c.r / 100;
+  let count = Math.min(room, Math.floor(mass / CFG.popMinPiece) - 1);
   if (count < 1) return;
-  c.r = Math.sqrt(mass / (count + 1) * 100); // todos los trozos (el original + los nuevos) quedan con la misma masa
+  const keep = Math.max(mass / (count + 1), mass * 0.3);
+  let left = mass - keep;
+  c.r = Math.sqrt(keep * 100);
   c.born = tick;
   const a0 = Math.random() * 6.28;
-  for (let i = 0; i < count; i++) splitCell(c, a0 + i * 6.2832 / count, c.r, CFG.splitBoost * 0.85);
+  for (let i = 0; i < count; i++) {
+    const n = count - i;
+    let piece = left / n;
+    if (n > 1) piece *= rnd(0.7, 1.3);
+    piece = Math.min(piece, left - CFG.popMinPiece * (n - 1) * 0.5);
+    left -= piece;
+    splitCell(c, a0 + i * 6.2832 / count + rnd(-0.2, 0.2), Math.sqrt(piece * 100), CFG.splitBoost * rnd(0.55, 1));
+  }
 }
 
 function canMerge(c) { return tick - c.born >= Math.max(CFG.mergeSec, c.r * CFG.mergeSizeK) * 25; }
@@ -367,7 +336,7 @@ function collide() {
       const d = Math.hypot(n.x - c.x, n.y - c.y);
       if (d >= c.r - n.r * CFG.eatOverlap) continue;
       if (n.type === T_FOOD) eat(c, n);
-      else if (c.r > n.r * CFG.eatRatio) {
+      else if (n.type === T_VIRUS ? c.r * c.r > n.r * n.r * CFG.virusEatMassRatio : c.r > n.r * CFG.eatRatio) {
         const virus = n.type === T_VIRUS;
         eat(c, n);
         if (virus) popCell(c);
@@ -380,7 +349,7 @@ function collide() {
       const d = Math.hypot(n.x - c.x, n.y - c.y);
       if (d >= c.r - n.r * CFG.eatOverlap) continue;
       if (n.owner === c.owner) { if (canMerge(c) && canMerge(n)) eat(c, n); }
-      else if (!n.owner.god && c.r > n.r * CFG.eatRatio) eat(c, n);
+      else if (c.r > n.r * CFG.eatRatio) eat(c, n);
     }
   }
 }
@@ -399,7 +368,9 @@ function stepMoving() {
         const ang = n.boost ? Math.atan2(n.boost.dy, n.boost.dx) : Math.random() * 6.28;
         v.r = Math.sqrt(v.r * v.r + n.r * n.r); v.moved = tick;
         delNode(n, v);
-        if (v.r >= CFG.virusFedSize) {
+        v.fed = (v.fed || 0) + 1;
+        if (v.fed >= CFG.virusFeeds) {
+          v.fed = 0;
           v.r = CFG.virusSize;
           if (virusCount < CFG.virusMax) setBoost(addNode(T_VIRUS, v.x, v.y, CFG.virusSize, v.color), ang, CFG.virusShot);
         }
@@ -455,132 +426,6 @@ function botNames() {
   return free.length ? free[Math.floor(Math.random() * free.length)] : 'Bot ' + Math.floor(Math.random() * 900 + 100);
 }
 
-//COMMANDS
-// Se escriben en el chat del juego (/login 6767) o, con el userscript, en la consola F12: cmd('/login 6767')
-const totalMass = (p) => p.cells.reduce((s, c) => s + massOf(c.r), 0);
-const fmt = (v) => String(Math.round(v * 10) / 10);
-
-function say(cl, text) {
-  const w = new Writer(32 + text.length * 3);
-  w.u8(99); w.u8(0x80); w.u8(74); w.u8(222); w.u8(128); w.str('Server'); w.str(text);
-  cl.conn.send(w.out());
-  if (cl.console) {
-    const t = Buffer.from(text, 'utf8'), o = Buffer.alloc(t.length + 1);
-    o[0] = 0xf5; t.copy(o, 1);
-    cl.conn.send(o);
-  }
-}
-
-function setTotalMass(p, target) {
-  const cur = totalMass(p);
-  if (!cur) return;
-  const k = Math.sqrt(Math.max(target, 0) / cur);
-  for (const c of p.cells) { c.r = clamp(c.r * k, CFG.decayMinSize, CFG.maxSize); c.moved = tick; }
-}
-
-function teleport(p, x, y) {
-  let cx = 0, cy = 0;
-  for (const c of p.cells) { cx += c.x; cy += c.y; }
-  cx /= p.cells.length; cy /= p.cells.length;
-  for (const c of p.cells) {
-    const m = c.r / 2;
-    c.x = clamp(x + (c.x - cx), -B + m, B - m);
-    c.y = clamp(y + (c.y - cy), -B + m, B - m);
-    c.boost = null; c.moved = tick;
-    gridMove(c);
-  }
-  p.mx = x; p.my = y;
-}
-
-const HELP = [
-  '/mass N  -> tu masa total pasa a N',
-  '/add N  /quitar N  -> sumar / restar masa',
-  '/tp  -> teleport al cursor  |  /tp X Y -> a unas coordenadas',
-  '/tpclick on|off  -> teleport con click izquierdo (requiere el userscript)',
-  '/merge  -> junta todas tus celulas al instante',
-  '/virus  -> crea un virus en el cursor  |  /food N -> comida en el cursor',
-  '/god  -> no te comen otros jugadores  |  /logout',
-].join('\n');
-
-function runCommand(cl, line) {
-  const a = String(line).trim().slice(0, 200).split(/\s+/);
-  const name = (a.shift() || '').toLowerCase();
-  const p = cl.player;
-  if (!name) return;
-
-  if (name === 'login') {
-    if (cl.admin) return say(cl, 'Ya estas dentro.');
-    if (cl.authFails >= 5) return say(cl, 'Demasiados intentos.');
-    if (a[0] !== undefined && safeEq(a[0], CFG.adminPass)) { cl.admin = true; return say(cl, 'Login correcto. Escribe /help'); }
-    cl.authFails++;
-    return say(cl, 'Clave incorrecta.');
-  }
-  if (name === 'tpc') { // click del userscript: solo actua si ya hiciste /login y /tpclick on
-    if (cl.admin && p.tpClick && p.cells.length) teleport(p, p.mx, p.my);
-    return;
-  }
-  if (!cl.admin) return say(cl, 'Usa /login <clave> primero.');
-
-  const n = Number(a[0]);
-  const alive = p.cells.length > 0;
-  const needAlive = () => { if (!alive) say(cl, 'Estas muerto: entra a jugar primero.'); return !alive; };
-  switch (name) {
-    case 'help': case 'ayuda': return say(cl, HELP);
-    case 'logout': cl.admin = false; p.tpClick = false; p.god = false; return say(cl, 'Sesion cerrada.');
-    case 'mass': case 'masa':
-      if (!Number.isFinite(n)) return say(cl, 'Uso: /mass 500');
-      if (needAlive()) return;
-      setTotalMass(p, n);
-      return say(cl, 'Masa total: ' + fmt(totalMass(p)));
-    case 'add': case 'sumar': case 'quitar': case 'rem': case 'remove': case 'sub': {
-      if (!Number.isFinite(n)) return say(cl, 'Uso: /add 200  o  /quitar 200');
-      if (needAlive()) return;
-      const sign = (name === 'add' || name === 'sumar') ? 1 : -1;
-      setTotalMass(p, totalMass(p) + sign * Math.abs(n));
-      return say(cl, 'Masa total: ' + fmt(totalMass(p)));
-    }
-    case 'tp':
-      if (needAlive()) return;
-      if (a.length >= 2 && Number.isFinite(n) && Number.isFinite(Number(a[1]))) teleport(p, clamp(n, -B, B), clamp(Number(a[1]), -B, B));
-      else teleport(p, p.mx, p.my);
-      return say(cl, 'TP a ' + Math.round(p.cells[0].x) + ', ' + Math.round(p.cells[0].y));
-    case 'tpclick':
-      p.tpClick = a[0] ? a[0].toLowerCase() === 'on' : !p.tpClick;
-      return say(cl, 'TP con click: ' + (p.tpClick ? 'ON' : 'OFF'));
-    case 'merge': {
-      if (needAlive()) return;
-      let sx = 0, sy = 0, sm = 0;
-      for (const c of p.cells) { const m = c.r * c.r; sx += c.x * m; sy += c.y * m; sm += m; }
-      for (const c of p.cells) { c.x = sx / sm; c.y = sy / sm; c.born = -1e6; c.boost = null; gridMove(c); }
-      return say(cl, 'Celulas unidas.');
-    }
-    case 'virus':
-      if (needAlive()) return;
-      addNode(T_VIRUS, clamp(p.mx, -B + CFG.virusSize, B - CFG.virusSize), clamp(p.my, -B + CFG.virusSize, B - CFG.virusSize), CFG.virusSize, [51, 255, 51]);
-      return say(cl, 'Virus creado.');
-    case 'food': case 'comida': {
-      if (needAlive()) return;
-      const cnt = Math.min(Number.isFinite(n) ? Math.floor(n) : 20, 300);
-      for (let i = 0; i < cnt; i++) {
-        const r = rnd(CFG.foodMin, CFG.foodMax), ang = rnd(0, 6.2832), d = rnd(0, 400);
-        addNode(T_FOOD, clamp(p.mx + Math.cos(ang) * d, -B + r, B - r), clamp(p.my + Math.sin(ang) * d, -B + r, B - r), r, color());
-      }
-      return say(cl, cnt + ' comida creada.');
-    }
-    case 'god':
-      p.god = !p.god;
-      return say(cl, 'God mode: ' + (p.god ? 'ON' : 'OFF'));
-    default: return say(cl, 'Comando desconocido. /help');
-  }
-}
-
-// Frames de texto: los manda el userscript (cmd('/login 6767')); no pasan por el cifrado del juego.
-function onText(cl, s) {
-  cl.console = true;
-  s = String(s).trim();
-  if (s) runCommand(cl, s[0] === '/' ? s.slice(1) : s);
-}
-
 //CLIENTS
 function sendBorder(cl) {
   const w = new Writer(64);
@@ -619,6 +464,7 @@ function decrypt(cl, m) {
   let k = cl.key;
   if (m.length === 13 && (m[0] ^ (k & 255)) !== 16) {
     const v = cl.pkey, k0 = m[0] ^ 16;
+    if (CFG.debug) console.log(`[debug] ${cl.ip} key resync`);
     if ((m[12] ^ k0) === (v >>> 24)) k = (k0 | (m[9] ^ (v & 255)) << 8 | (m[10] ^ ((v >>> 8) & 255)) << 16 | (m[11] ^ ((v >>> 16) & 255)) << 24) >>> 0;
   }
   for (let j = 0; j < m.length; j++) m[j] ^= (k >>> (8 * (j & 3))) & 255;
@@ -638,10 +484,12 @@ function onMessage(cl, m) {
     w.u8(241); w.u32(cl.pkey); w.str(SERVER_VERSION);
     cl.conn.send(w.out());
     sendBorder(cl);
+    if (CFG.debug) console.log(`[debug] ${cl.ip} handshake ok, protocol ${cl.proto}, client ${cl.pkey}`);
     return;
   }
   decrypt(cl, m);
   const op = m[0];
+  if (CFG.debug && op !== 16) console.log(`[debug] ${cl.ip} packet ${op} (${m.length} bytes)`);
   if (op === 16) {
     if (m.length === 13) { p.mx = m.readInt32LE(1); p.my = m.readInt32LE(5); }
     else if (m.length === 21) { p.mx = m.readDoubleLE(1); p.my = m.readDoubleLE(9); }
@@ -651,7 +499,7 @@ function onMessage(cl, m) {
   } else if (op === 0) {
     if (p.cells.length || tick - cl.spawnT < 10) return;
     let e = m.indexOf(0, 1); if (e < 0) e = m.length;
-    let name = m.subarray(1, e).toString('utf8').replace(/[\u0000-\u001f\ufffd]/g, '').trim();
+    let name = m.subarray(1, e).toString('utf8').replace(/[\u0000-\u001f�]/g, '').trim();
     name = Array.from(name).slice(0, CFG.nameMax).join('');
     p.name = name;
     cl.spawnT = tick; cl.spectate = false;
@@ -659,12 +507,6 @@ function onMessage(cl, m) {
   } else if (op === 1) { if (!p.cells.length) cl.spectate = true; }
   else if (op === 17) { if (p.split < 4) p.split++; }
   else if (op === 21) p.eject = true;
-  else if (op === 99) { // chat del juego: solo se usan los mensajes que empiezan por /
-    const fl = m[1], skip = 2 + (fl & 2 ? 4 : 0) + (fl & 4 ? 8 : 0) + (fl & 8 ? 16 : 0);
-    if (m.length <= skip) return;
-    const text = Buffer.from(m.subarray(skip).filter((b) => b !== 0)).toString('utf8').trim();
-    if (text[0] === '/') runCommand(cl, text.slice(1));
-  }
 }
 
 function viewOf(cl) {
@@ -788,142 +630,6 @@ function gameTick() {
   eatenNow.clear();
 }
 
-//ACCESS
-// The password can come as ?key=... or as the first path segment (wss://host/clave).
-function safeEq(a, b) {
-  const x = crypto.createHash('sha256').update(String(a)).digest();
-  const y = crypto.createHash('sha256').update(String(b)).digest();
-  return crypto.timingSafeEqual(x, y);
-}
-function parseUrl(raw) { try { return new URL(raw || '/', 'http://x'); } catch (e) { return new URL('/', 'http://x'); } }
-function hasAccess(u) {
-  if (!CFG.password) return true;
-  const q = u.searchParams.get('key');
-  if (q !== null && safeEq(q, CFG.password)) return true;
-  let seg = '';
-  try { seg = decodeURIComponent(u.pathname.slice(1)); } catch (e) { }
-  return seg !== '' && safeEq(seg, CFG.password);
-}
-
-//WEB PAGE
-const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-
-function baseOf(req) {
-  const proto = String(req.headers['x-forwarded-proto'] || (tls ? 'https' : 'http')).split(',')[0].trim();
-  const host = String(req.headers['x-forwarded-host'] || req.headers.host || 'localhost:' + CFG.port).split(',')[0].trim();
-  return { http: proto + '://' + host, ws: (proto === 'https' ? 'wss' : 'ws') + '://' + host };
-}
-
-function userscript(req) {
-  const b = baseOf(req);
-  const target = b.ws + '/' + (CFG.password ? '?key=' + encodeURIComponent(CFG.password) : '');
-  const title = String(CFG.name).replace(/[\r\n]/g, ' ');
-  return `// ==UserScript==
-// @name         ${title} (agar.io)
-// @namespace    private-agar-server
-// @version      1.1
-// @description  Conecta agar.io a ${title}
-// @match        *://agar.io/*
-// @match        *://www.agar.io/*
-// @run-at       document-idle
-// @grant        none
-// ==/UserScript==
-(function () {
-  var TARGET = ${JSON.stringify(target)};
-  var HOST = '';
-  try { HOST = new URL(TARGET).host; } catch (e) { }
-  var ws = null;
-  // Captura el websocket del juego para poder mandar comandos por la consola: cmd('/login 6767')
-  var send0 = WebSocket.prototype.send;
-  WebSocket.prototype.send = function () {
-    try {
-      if (this !== ws && this.url && new URL(this.url).host === HOST) {
-        ws = this;
-        ws.addEventListener('message', function (ev) {
-          if (ev.data instanceof ArrayBuffer && ev.data.byteLength > 1) {
-            var a = new Uint8Array(ev.data);
-            if (a[0] === 0xf5) console.log('%c[server]', 'color:#4ade80', new TextDecoder().decode(a.subarray(1)));
-          }
-        });
-      }
-    } catch (e) { }
-    return send0.apply(this, arguments);
-  };
-  window.cmd = function (t) {
-    if (ws && ws.readyState === 1) ws.send(String(t)); else console.warn('Sin conexion al server privado');
-  };
-  // Click izquierdo sobre el juego: el server solo teletransporta si hiciste /login y /tpclick on
-  document.addEventListener('mousedown', function (e) {
-    if (e.button === 0 && e.target && e.target.tagName === 'CANVAS' && ws && ws.readyState === 1) ws.send('tpc');
-  }, true);
-  var tries = 0;
-  var t = setInterval(function () {
-    tries++;
-    if (window.core && typeof window.core.connect === 'function') {
-      clearInterval(t);
-      try { window.core.connect(TARGET); } catch (e) { console.error(e); }
-    } else if (tries > 150) { clearInterval(t); }
-  }, 300);
-})();
-`;
-}
-
-function page(req, full, q) {
-  const b = baseOf(req);
-  const target = b.ws + '/' + q;
-  const online = [...clients].filter((c) => c.ready).length;
-  const head = `<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>${esc(CFG.name)}</title>
-<style>
-:root{--bg:#0f1117;--card:#181b24;--tx:#e8eaf0;--mut:#8b91a3;--ac:#4ade80;--bd:#272b38}
-*{box-sizing:border-box}
-body{margin:0;background:var(--bg);color:var(--tx);font:16px/1.55 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;display:flex;justify-content:center;padding:32px 16px}
-main{width:100%;max-width:620px}
-h1{margin:0 0 4px;font-size:28px}
-.sub{color:var(--mut);margin:0 0 24px}
-.dot{display:inline-block;width:9px;height:9px;border-radius:50%;background:var(--ac);margin-right:6px}
-.card{background:var(--card);border:1px solid var(--bd);border-radius:14px;padding:20px;margin-bottom:16px}
-.card h2{margin:0 0 10px;font-size:17px}
-ol{margin:0;padding-left:20px}li{margin:6px 0}
-a.btn,button{display:inline-block;background:var(--ac);color:#06210f;font-weight:600;border:0;border-radius:10px;padding:11px 18px;font-size:15px;text-decoration:none;cursor:pointer}
-button.sec{background:#262b3a;color:var(--tx)}
-code{display:block;background:#0b0d12;border:1px solid var(--bd);border-radius:8px;padding:10px 12px;margin:10px 0;overflow-x:auto;font-size:13px;white-space:nowrap}
-.mut{color:var(--mut);font-size:14px}
-</style></head><body><main>
-<h1>${esc(CFG.name)}</h1>
-<p class="sub"><span class="dot"></span>Servidor encendido &middot; ${online} jugador${online === 1 ? '' : 'es'} conectado${online === 1 ? '' : 's'}</p>`;
-  if (!full) return head + `<div class="card"><p class="mut" style="margin:0">Servidor privado. Usa el link con tu clave para ver las instrucciones.</p></div></main></body></html>`;
-  const script = b.http + '/agar.user.js' + q;
-  const cmd = `core.connect(${JSON.stringify(target)})`;
-  return head + `
-<div class="card"><h2>Entrar (una sola vez)</h2>
-<ol>
-<li>Instala la extension <b>Tampermonkey</b> en tu navegador (Chrome, Edge, Firefox, Opera, Brave...).</li>
-<li>Pulsa este boton y confirma la instalacion del script:<br><br><a class="btn" href="${esc(script)}">Instalar script</a></li>
-<li>Abre <b>agar.io</b>. Se conecta solo a este servidor. Pon tu nombre y dale a jugar.</li>
-</ol></div>
-<div class="card"><h2>Sin instalar nada</h2>
-<p class="mut" style="margin-top:0">Abre agar.io, pulsa F12, ve a <b>Consola</b>, pega esto y dale a Enter (hay que repetirlo cada vez que recargues):</p>
-<code id="cmd">${esc(cmd)}</code>
-<button class="sec" onclick="navigator.clipboard.writeText(document.getElementById('cmd').textContent).then(function(){this.textContent='Copiado'}.bind(this))">Copiar comando</button>
-</div>
-<p class="mut">No hace falta iniciar sesion. Comparte este mismo link solo con tus amigos: incluye la clave.</p>
-</main></body></html>`;
-}
-
-const handler = (req, res) => {
-  const u = parseUrl(req.url);
-  const send = (code, type, body) => { res.writeHead(code, { 'content-type': type + '; charset=utf-8', 'cache-control': 'no-store' }); res.end(body); };
-  if (u.pathname === '/health') return send(200, 'text/plain', 'ok\n');
-  const ok = !CFG.password || (u.searchParams.get('key') !== null && safeEq(u.searchParams.get('key'), CFG.password));
-  if (u.pathname === '/agar.user.js') return ok ? send(200, 'text/javascript', userscript(req)) : send(403, 'text/plain', 'forbidden\n');
-  if (u.pathname === '/') {
-    const q = CFG.password ? '?key=' + encodeURIComponent(CFG.password) : '';
-    return send(200, 'text/html', page(req, ok, q));
-  }
-  send(404, 'text/plain', 'not found\n');
-};
-
 //SERVER
 const perIp = new Map();
 function onUpgrade(req, sock) {
@@ -931,36 +637,71 @@ function onUpgrade(req, sock) {
   const ip = String(req.headers['cf-connecting-ip'] || req.headers['x-forwarded-for'] || sock.remoteAddress || '').split(',')[0].trim();
   const n = perIp.get(ip) || 0;
   if (!key || clients.size >= CFG.maxClients || n >= CFG.maxPerIp) { sock.destroy(); return; }
-  if (!hasAccess(parseUrl(req.url))) {
-    sock.write('HTTP/1.1 403 Forbidden\r\nConnection: close\r\nContent-Length: 0\r\n\r\n');
-    sock.destroy();
-    return;
-  }
   const accept = crypto.createHash('sha1').update(key + '258EAFA5-E914-47DA-95CA-C5AB0DC85B11').digest('base64');
   sock.write('HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: ' + accept + '\r\n\r\n');
   sock.setNoDelay(true);
   perIp.set(ip, n + 1);
   const conn = new Conn(sock, req);
-  const cl = { conn, ip, proto: 0, key: 0, pkey: 0, ready: false, spectate: false, view: new Set(), player: newPlayer('', false), cx: 0, cy: 0, scale: 1, spawnT: -100, admin: false, authFails: 0, console: false };
+  const cl = { conn, ip, proto: 0, key: 0, pkey: 0, ready: false, spectate: false, view: new Set(), player: newPlayer('', false), cx: 0, cy: 0, scale: 1, spawnT: -100 };
   cl.player.client = cl;
   clients.add(cl);
   console.log(`[+] ${ip} connected (${clients.size} online)`);
-  conn.onmessage = (m, op) => { try { if (op === 1) onText(cl, m.toString('utf8')); else onMessage(cl, m); } catch (e) { conn.end(); } };
+  conn.onmessage = (m) => { try { onMessage(cl, m); } catch (e) { conn.end(); } };
   conn.onclose = () => {
     clients.delete(cl);
     const left = (perIp.get(ip) || 1) - 1;
     if (left > 0) perIp.set(ip, left); else perIp.delete(ip);
     for (const c of cl.player.cells.slice()) delNode(c);
     players.delete(cl.player);
-    console.log(`[-] ${ip} disconnected (${clients.size} online)`);
+    console.log(`[-] ${ip} disconnected (${clients.size} online)` + (CFG.debug ? ` reason: ${conn.why}` : ''));
   };
 }
 
+//WEB PAGE
+// The page at / gives players a bookmarklet that connects agar.io to this server (no extension needed).
+function bookmarklet(wsUrl) {
+  const code = `(()=>{var U=${JSON.stringify(wsUrl)},c=window.core;if(!c||typeof c.connect!=='function'){alert('Abre agar.io primero y luego pulsa este marcador.');return;}` +
+    `try{MC.nextDisconnectIsIntended=true}catch(e){}try{var o=window.agarApp&&agarApp.API;if(o)o.showIncentive=function(){};if(window.MC)MC.showIncentive=function(){}}catch(e){}` +
+    `var g=false;document.addEventListener('update_user_info',function(e){if(!(e.detail&&e.detail.psc))g=true;});` +
+    `setTimeout(function(){if(g)return;try{document.dispatchEvent(new CustomEvent('update_user_info',{bubbles:true,cancelable:true,detail:{id:'',name:'Guest',isPayingUser:false,avatarUrl:'',level:1,currentXp:0,totalXp:50,realm:['Guest',2],isNewUser:false,hasLoggedIntoMobile:false,psc:true}}))}catch(e){}},1500);` +
+    `c.connect(U);})();`;
+  return 'javascript:' + encodeURIComponent(code);
+}
+
+function esc(t) { return String(t).replace(/[&<>"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch])); }
+
+function landingPage(q) {
+  const secure = tls || /https/i.test(String(q.headers['x-forwarded-proto'] || ''));
+  const host = String(q.headers.host || `localhost:${CFG.port}`);
+  const wsUrl = (secure ? 'wss://' : 'ws://') + host;
+  const name = esc(CFG.name), href = bookmarklet(wsUrl);
+  return `<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${name}</title>
+<style>body{margin:0;font-family:Ubuntu,system-ui,sans-serif;background:#111;color:#eee;display:flex;justify-content:center;padding:32px 16px}main{max-width:560px;width:100%}h1{margin:0 0 4px;font-size:28px}
+.s{color:#9a9ea8;margin:0 0 24px}.b{display:inline-block;padding:12px 22px;border-radius:10px;background:#2a61d7;color:#fff;font-weight:700;text-decoration:none;font-size:17px;cursor:grab}
+ol{line-height:1.7;padding-left:22px}code{background:#222;padding:2px 6px;border-radius:5px}.box{background:#1b1d22;border:1px solid #2c2f36;border-radius:12px;padding:18px 20px;margin:18px 0}
+textarea{width:100%;box-sizing:border-box;height:70px;background:#0d0e10;color:#ccc;border:1px solid #2c2f36;border-radius:8px;padding:8px;font-size:12px}small{color:#777}</style></head><body><main>
+<h1>${name}</h1><p class="s" id="online">Jugadores en línea: ${clients.size}</p>
+<div class="box"><p><b>Paso 1.</b> Arrastra este botón a tu barra de marcadores (si no la ves, pulsa <code>Ctrl+Shift+B</code>):</p>
+<p><a class="b" href="${href}">▶ ${name}</a></p>
+<p><b>Paso 2.</b> Abre <a href="https://agar.io" style="color:#6f9bff">agar.io</a>, espera a que cargue el menú y pulsa el marcador. El juego se conecta a este server y ya puedes darle a Play.</p>
+<p><small>Cada vez que recargues agar.io, vuelve a pulsar el marcador. Si Chrome pregunta si agar.io puede acceder a tu red local, acepta.</small></p></div>
+<div class="box"><p><b>Sin marcadores (móvil u otro navegador):</b> en agar.io pulsa <code>F12</code>, pestaña Console, pega esto y pulsa Enter:</p>
+<textarea readonly onclick="this.select()">${esc(decodeURIComponent(href.slice(11)))}</textarea></div>
+<p><small>Server privado · ${esc(wsUrl)}</small></p></main></body></html>`;
+}
+
+const handler = (q, r) => {
+  const path = String(q.url || '/').split('?')[0];
+  if (path === '/status') { r.writeHead(200, { 'content-type': 'application/json' }); return r.end(JSON.stringify({ name: CFG.name, online: clients.size, max: CFG.maxClients })); }
+  if (path !== '/') { r.writeHead(404, { 'content-type': 'text/plain' }); return r.end('not found\n'); }
+  r.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+  r.end(landingPage(q));
+};
 const tls = CFG.cert && CFG.key;
 const server = tls ? https.createServer({ cert: fs.readFileSync(CFG.cert), key: fs.readFileSync(CFG.key) }, handler) : http.createServer(handler);
 server.on('upgrade', onUpgrade);
 server.listen(CFG.port, CFG.host, () => {
-  console.log(`${CFG.name} listening on ${tls ? 'wss' : 'ws'}://${CFG.host}:${CFG.port}  (bots: ${CFG.bots}, password: ${CFG.password ? 'on' : 'off'})`);
+  console.log(`${CFG.name} listening on ${tls ? 'wss' : 'ws'}://${CFG.host}:${CFG.port}  (bots: ${CFG.bots})`);
 });
 
 for (let i = 0; i < CFG.foodAmount; i++) spawnFood();
