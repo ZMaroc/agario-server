@@ -20,7 +20,7 @@ const CFG = {
   foodAmount: 1500, foodSpawnPerTick: 12, foodMin: 10, foodMax: 20,
   virusAmount: 30, virusMax: 60, virusSize: 100, virusFeeds: 7, virusShot: 780, virusEatMassRatio: 1.3225, popMaxPiece: 60,
   startSize: 223.61, botStartSize: 141.42, maxSize: 1500, maxCells: 16, minSplitSize: 59.16, minEjectSize: 59.16,
-  splitBoost: 780, ejectSize: 36.06, ejectLoss: 1800, ejectBoost: 780, ejectCooldown: 2, ejectMax: 2000,
+  splitBoost: 780, ejectSize: 36.06, ejectLoss: 1800, ejectBoost: 780, ejectCooldown: 3, ejectMax: 2000,
   eatRatio: 1.15, eatOverlap: 1 / 3,
   mergeSec: 30, mergeSizeK: 0.2,
   decayPerSec: 0.002, decayMinSize: 32,
@@ -38,7 +38,8 @@ for (let i = 2; i < process.argv.length; i += 2) {
   CFG[k] = typeof CFG[k] === 'number' ? Number(v) : v;
 }
 
-const B = CFG.border;
+let B = CFG.border;
+const MAP_SIZES = { small: 3536, medium: 7071, large: 10607 };
 const BOT_NAMES = ["ヅ ༺Mчѕтιc༻ ✦", "꧁〖Øδ〗 Jσкєя꧂ ☽", "꧁🔰 Sιrιυѕ꧂ ฬ", "ヅFαηgヅ ༺", "❥Şαναgє❥ 『』 ꙰", "⛧ƘΞcℓιρѕє⛧☣", "☣Fαℓcση☣ 夜۝", "༺Tυηdяα༻ 刃༻",
   "༺Ňσvα༻ ☠", "☾ℜιƒт丶Øηyx☽ ⛧ 一", "♚ ♛ØĐяαcσ♛一一惡終", "Fαℓcση ♛ ☽", "❥ ꧁Mσятαℓ꧂一毒", "💀Vαℓнαℓℓα💀☾", "⚔☠ ΛLуηχ⚔ ♛", "☣ ヅℜυιηヅ 神", "✞Fαℓcση✞ 〖Øδ〗",
   "༺Kяαкєη༻ ™ ฬ", "✖ ♛XTυявσ♛ 亡", "♛Dσσм♛✪", "❥Vσιd❥ ꧁✭ ✖", "Şρєcтєя ☣", "☠ΛHєχ☠ツ", "⚔Tєяяσя⚔꙰", "『ΔĐяιƒт』 數ฬ", "『Ňσvα×Qυαятz』™", "⚔Đιєѕєℓ⚔ 🜏 ✦",
@@ -569,8 +570,29 @@ function setMass(p, mass) {
   for (const c of p.cells) { c.r = Math.min(CFG.maxSize, Math.max(CFG.decayMinSize, c.r * k)); c.moved = tick; }
 }
 
-const HELP = ['/login <password>', '/who', '/mass <n|+n|-n> [player]', '/tp [player]  (sin nombre: a donde apunta tu mouse)', '/bring <player>', '/kill [player]', '/kick <player>',
-  '/virus  (en tu mouse)', '/merge', '/bots <n>', '/say <texto>'];
+const HELP_ALL = ['/help', '/who', '/login <password>'];
+const HELP_ADMIN = [
+  'Mass:  /mass <n>  |  /mass +<n>  |  /mass -<n>  |  /mass <n> <player>',
+  'Move:  /tp (click mode)  |  /tp <player>  |  /bring <player>',
+  'Players:  /kill [player]  |  /kick <player>  |  /merge',
+  'World:  /virus  |  /bots <0-200>  |  /map <small|medium|large>',
+  'Chat:  /say <text>',
+];
+
+function setMap(size) {
+  const half = MAP_SIZES[size];
+  if (!half) return false;
+  B = half;
+  CFG.foodAmount = Math.round(1500 * (half * half) / (7071 * 7071));
+  CFG.virusAmount = Math.max(6, Math.round(30 * (half * half) / (7071 * 7071)));
+  for (const n of [...nodes.values()]) {
+    if (n.type === T_PLAYER) { const m = n.r / 2; n.x = clamp(n.x, -B + m, B - m); n.y = clamp(n.y, -B + m, B - m); n.moved = tick; gridMove(n); }
+    else if (Math.abs(n.x) > B - n.r || Math.abs(n.y) > B - n.r) delNode(n);
+    else if (n.type === T_VIRUS && virusCount > CFG.virusMax) delNode(n);
+  }
+  for (const cl of clients) if (cl.ready) sendBorder(cl);
+  return true;
+}
 
 function onChat(cl, text) {
   const now = Date.now();
@@ -590,7 +612,11 @@ function onChat(cl, text) {
     if (arg === CFG.admin) { cl.admin = true; return sys(cl, 'Logged in as admin. Type /help for commands.'); }
     return sys(cl, 'Wrong password.');
   }
-  if (c === 'help') return sys(cl, cl.admin ? HELP.join('  |  ') : '/login <password>  |  /who');
+  if (c === 'help') {
+    sys(cl, 'Commands: ' + HELP_ALL.join('  |  '));
+    if (cl.admin) for (const line of HELP_ADMIN) sys(cl, line);
+    return;
+  }
   if (c === 'who') {
     const list = [...players].filter((q) => q.cells.length && !q.bot).map((q) => `${pname(q)} (${pmass(q)})`);
     return sys(cl, `${clients.size} online: ` + (list.join(', ') || 'nobody alive'));
@@ -646,6 +672,12 @@ function onChat(cl, text) {
     return sys(cl, `Bots: ${n}`);
   }
   if (c === 'say') { if (arg) chatAll({ t: 'msg', from: 'Server', admin: true, text: arg }); return; }
+  if (c === 'map') {
+    const size = (rest[0] || '').toLowerCase();
+    if (!setMap(size)) return sys(cl, 'Usage: /map <small|medium|large>  (now ' + (Object.keys(MAP_SIZES).find((k) => MAP_SIZES[k] === B) || B) + ')');
+    chatAll({ t: 'sys', text: `Map size: ${size}` });
+    return;
+  }
   return sys(cl, 'Unknown command. /help');
 }
 
