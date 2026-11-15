@@ -24,17 +24,19 @@ const CFG = {
   name: 'Private FFA',
   maxClients: 200, maxPerIp: 8,
   tickMs: 40,
-  border: 7071,
+  border: 6364,                       // 7071 * 0.9  (mapa 10% mas pequeno)
   viewW: 1920, viewH: 1080, viewMult: 2.2,
-  foodAmount: 1500, foodSpawnPerTick: 12, foodMin: 10, foodMax: 20,
-  virusAmount: 30, virusMax: 60, virusSize: 100, virusFedSize: 141.4, virusShot: 780,
+  foodAmount: 1215, foodSpawnPerTick: 12, foodMin: 10, foodMax: 20,   // 1500 * 0.81 (misma densidad de comida)
+  virusAmount: 24, virusMax: 49, virusSize: 100, virusFeed: 7, virusShot: 780,   // 30/60 * 0.81
+  virusEatRatio: 1.1533,              // un virus solo te revienta si tu masa > 133% de la suya (sqrt(1.33) en radio)
+  virusPieceMass: 36, virusBigMass: 466,   // masa de cada pedazo pequeno al reventar / masa sobrante para partirse en trozos grandes
   startSize: 114.89, maxSize: 1500, maxCells: 16, minSplitSize: 59.16, minEjectSize: 59.16,
   splitBoost: 780, ejectSize: 36.06, ejectLoss: 1800, ejectBoost: 780, ejectCooldown: 2, ejectMax: 2000,
   eatRatio: 1.118, eatOverlap: 0.4,
   mergeSec: 30, mergeSizeK: 0.2,
   decayPerSec: 0.002, decayMinSize: 32,
   speedK: 2.2 * 40, speedPow: -0.439,
-  bots: 15, botRespawnTicks: 50,
+  bots: 40, botRespawnTicks: 50,
   leaderboardTicks: 25, nameMax: 15,
 };
 
@@ -49,8 +51,33 @@ for (let i = 2; i < process.argv.length; i += 2) {
 }
 
 const B = CFG.border;
-const BOT_NAMES = ['Nova', 'Pixel', 'Rex', 'Luna', 'Kiwi', 'Turbo', 'Mango', 'Zed', 'Coco', 'Blitz', 'Echo', 'Fizz', 'Gizmo', 'Halo', 'Indy',
-  'Jinx', 'Koda', 'Lynx', 'Momo', 'Nix', 'Onyx', 'Pogo', 'Quill', 'Rolo', 'Sumo', 'Taco', 'Uno', 'Vex', 'Wasp', 'Yeti'];
+// Nombres de bots tomados de https://agario-skins.net/agario-names
+const BOT_NAMES = [
+  "ヅ ༺Mчѕтιc༻ ✦", "꧁〖Øδ〗 Jσкєя꧂ ☽", "♛℣ℜσgυє丶ℜσηιη♛ 焱彡", "꧁🔰 Sιrιυѕ꧂ ฬ", "⛧Şнινєя⛧ ๖ۣۜǤнσsτ༻ ✧",
+  "☣ ☠Pιχєℓ•Zєρђყя☠ 一", "ヅFαηgヅ ༺", "❥Şαναgє❥ 『』 ꙰", "⛧ƘΞcℓιρѕє⛧☣", "☣Fαℓcση☣ 夜۝",
+  "༺Tυηdяα༻ 刃༻", "✞TняαѕнΞBιѕнσρ✞ ™", "꧁ΛTняαѕн×Wσℓƒ꧂ ⚡", "༺Ňσvα༻ ☠", "☾ℜιƒт丶Øηyx☽ ⛧ 一",
+  "♚ ♛ØĐяαcσ♛一一惡終", "Fαℓcση ♛ ☽", "❥ ꧁Mσятαℓ꧂一毒", "💀Vαℓнαℓℓα💀☾", "⚔☠ ΛLуηχ⚔ ♛",
+  "〖Øδ〗 ΛTυηdяα•Şђคđσฬ 數", "☣ ヅℜυιηヅ 神", "✞Fαℓcση✞ 〖Øδ〗", "⚡ Qυαятz丶Øяαcℓє一夜", "༺Kяαкєη༻ ™ ฬ",
+  "✖ ♛XTυявσ♛ 亡", "♛Dσσм♛✪", "❥Vσιd❥ ꧁✭ ✖", "〖Øδ〗 ヅMανєяιcкヅ 神", "Şρєcтєя ☣",
+  "☠ΛHєχ☠ツ", "⚔Tєяяσя⚔꙰", "♚ ❥ƤŞєηтιηєℓŇσvα❥一夜", "『ΔĐяιƒт』 數ฬ", "🔰 ⚡Şтσям×Şкυℓℓ⚡ 魔",
+  "『Ňσvα×Qυαятz』™", "♛ ⛧Vєηαтяιχ Cчcℓσηє⛧一氷", "〖Şєηтιηєℓ×Sιrιυѕ〗 🔰", "❥ ༺ØвℓινισηVαℓнαℓℓα༻ ☣", "⚔Đιєѕєℓ⚔ 🜏 ✦",
+  "☠Lуηχ☠ ヅ ヅ", "༺XPуяσ×Λяcтιc༻一", "♛ ⚡ŦIηƒєяησ⚡一漻", "⛧Qυαятz⛧ ♚", "☣Ǥнσsτ☣✖",
+  "⚔VαηdαℓMσятαℓ⚔ ™", "〖Hαναc〗 翼⚔", "☾ ⚡FяσѕтĐαggєя⚡一魔", "💀Fαηg💀 ♛ ✦", "⚡Vєηαтяιχ⚡ 刃ฬ",
+  "⚡ΔŞαναgє⚡ 毒࿊", "⚡ƘŞкυℓℓ丶Iηƒєяησ⚡™", "MGR! ✌ ⚡Mιdαѕ⚡一數", "✞❥ ℜαρтσя✞ ✪", "❥🐉 ΔCђασѕ×ℜєαρєя❥ メ",
+  "💀Fяσѕт💀 🜏", "⛧ 💀Şтσям💀一魔", "⛧ŇσvαΞPιχєℓ⛧⚡", "♛Đяαcσ♛ ™ 🔰", "🐉 ☣ŦMσηαяcн丶Hყdяα☣ 翼",
+  "❥ℜαρтσяŞαναgє❥ 闇✪", "『ΛєтнєяŞђคđσฬ』 ༗✧", "☾ 💀CσмєtΞCσвяα💀一魂", "⚔ ☾Pυℓѕαя•Şнσgυη☽ ۝", "〖Øδ〗 ♛Đιєѕєℓ•Cяιмѕση♛ ✞",
+  "⚔Øηyx⚔☢", "⚡ℜєαρєя⚡ ƬψƬ ☢", "༺ℜσgυє༻ 幻꙰", "☠🐉 Mαмвα☠ ꙰", "✞Mσηαяcн✞ ☾",
+  "✈ ⚡ØTємρєѕт⚡ 刃", "꧁✭ ❥ƤCσвяα❥ 一", "⚔Mαgмα×Fαℓcση⚔ ❥ ヅ", "༺Iηƒєяησ༻ ☣ ✞", "☠Mσηαяcн丶Vєηαтяιχ☠⚡",
+  "๖ۣۜǤнσsτ༻ ⚡Ňєχυѕ×Cяιмѕση⚡一夜", "Şρєcтєя✞", "⛧ ☾Ňєυтяση☽一爱", "〖ŦIηƒєяησ〗۝", "ヅBιѕнσρMσятαℓヅ 爪么",
+  "꧁✭ ♛VØЯŦΞЖΞSιrιυѕ♛一玄", "☠Vαηdαℓ丶Đяαcσ☠⚡", "☣ ✞Şнσgυη✞一炎", "⚡ℜιƒт丶Bℓιgнт⚡ ⚔ ꙰", "💀Øяαcℓє💀 ๖ۣۜǤнσsτ༻",
+  "☣Ǥнσsτ丶Vєηαтяιχ☣ ☾", "🔰 ☣Øηyx☣一爱", "⚔ Λρєχ ฬ", "⚡Λzяαєℓ⚡么", "༺꧁✭ Pυℓѕαя Jσкєя༻ ツ",
+  "Λzяαєℓ ♛ ☢", "Gℓιтcн 〖Øδ〗", "〖🐉 Mιdαѕ〗 ™", "꧁ƤTυявσ꧂ 緑ฬ", "🜏 ⚡ŻŞρєcтєя⚡一覇",
+  "💀꧁✭ ŻMιяαgє💀 ⚔", "☣Tυηdяα×Cяιмѕση☣ ✈ ฬ", "🔥 Fυяу ۝", "༺ℜαρтσя丶Øвℓινιση༻⚔", "™ ☣Fαηg☣ ☽",
+  "☠ŻŇєυтяση☠ ฬ✖", "⚡☾ Ňιgнтмαяє⚡ ツ", "☣ ♛Fяσѕт♛一炎", "ƬψƬ ☢ ☠Tняαѕн Tυηdяα☠ ࿊", "〖Øδ〗 〖Pуяσ Sιrιυѕ〗 表",
+  "♚ ✞Hαναc•Cιηdєя✞ ꙰", "Mσятαℓ 〘🍩〙✈", "💀⛧ Hєχ💀 么", "⚡ ❥ℜαρтσя❥ ❥", "🐉 ☾ΛяcтιcΞJσкєя☽ ฬ",
+  "༺Ňιgнтмαяє༻ ☽", "☣Mαмвα•ℜσgυє☣ ✖ ☢", "✞Qυαятz✞ ƬψƬ ☢ ꙰", "Tυηdяα 神⚔", "⚡Bℓιgнт⚡ฬ",
+  "『Ňσvα』 ✖ ⚔", "☠Vαηdαℓ☠ 表么", "☣Fυяу☣ ☠", "☠Fяσѕт☠ 幻☽", "⚔ØGℓιтcн⚔ツ",
+];
 
 //WEBSOCKET
 class Conn {
@@ -270,18 +297,34 @@ function playerEject(p) {
   }
 }
 
+// Reventar con un virus (mismo esquema que los servidores abiertos tipo MultiOgar):
+//  - la celula ya sumo la masa del virus antes de llamar aqui
+//  - se parte en tantas piezas como quepan hasta maxCells (minimo masa de split por pieza)
+//  - las piezas pequenas pesan como maximo virusPieceMass; si es una celula pequena se reparte parejo
+//  - si la masa que sobra es muy grande (> virusBigMass) se desprenden hasta 3 trozos grandes (mitades)
 function popCell(c) {
   const p = c.owner;
   const room = CFG.maxCells - p.cells.length;
   if (room <= 0) return;
   const mass = c.r * c.r / 100;
-  const count = Math.min(room, Math.floor(mass * 0.6 / 20));
-  if (count < 1) return;
-  const piece = mass * 0.6 / count;
-  c.r = Math.sqrt((mass - piece * count) * 100);
+  const minMass = CFG.minSplitSize * CFG.minSplitSize / 100;
+  const n = Math.min(room, Math.floor(mass / minMass) - 1);
+  if (n < 1) return;
+  const small = Math.min(mass / (n + 1), CFG.virusPieceMass);
+  let smallN = n, rest = mass - small * n;
+  const bigs = [];
+  while (rest > CFG.virusBigMass && smallN > 0 && bigs.length < 3) {
+    smallN--; rest += small;
+    const half = rest / 2;
+    bigs.push(half); rest -= half;
+  }
+  const sizes = [];
+  for (let i = 0; i < smallN; i++) sizes.push(Math.sqrt(small * 100));
+  for (const m of bigs) sizes.push(Math.sqrt(m * 100));
+  c.r = Math.sqrt(rest * 100);
   c.born = tick;
-  const a0 = Math.random() * 6.28;
-  for (let i = 0; i < count; i++) splitCell(c, a0 + i * 6.2832 / count, Math.sqrt(piece * 100), CFG.splitBoost * 0.85);
+  const a0 = Math.random() * 6.2832;
+  for (let i = 0; i < sizes.length; i++) splitCell(c, a0 + i * 6.2832 / sizes.length, sizes[i], CFG.splitBoost * 0.85);
 }
 
 function canMerge(c) { return tick - c.born >= Math.max(CFG.mergeSec, c.r * CFG.mergeSizeK) * 25; }
@@ -338,11 +381,10 @@ function collide() {
       const d = Math.hypot(n.x - c.x, n.y - c.y);
       if (d >= c.r - n.r * CFG.eatOverlap) continue;
       if (n.type === T_FOOD) eat(c, n);
-      else if (c.r > n.r * CFG.eatRatio) {
-        const virus = n.type === T_VIRUS;
-        eat(c, n);
-        if (virus) popCell(c);
+      else if (n.type === T_VIRUS) {
+        if (c.r > n.r * CFG.virusEatRatio) { eat(c, n); popCell(c); }
       }
+      else if (c.r > n.r * CFG.eatRatio) eat(c, n);
     }
     found.length = 0;
     gridQuery(c.x - c.r, c.y - c.r, c.x + c.r, c.y + c.r, (n) => found.push(n), pgrid);
@@ -369,8 +411,10 @@ function stepMoving() {
         if (v.dead || Math.hypot(v.x - n.x, v.y - n.y) >= v.r) continue;
         const ang = n.boost ? Math.atan2(n.boost.dy, n.boost.dx) : Math.random() * 6.28;
         v.r = Math.sqrt(v.r * v.r + n.r * n.r); v.moved = tick;
+        v.feed = (v.feed || 0) + 1;
         delNode(n, v);
-        if (v.r >= CFG.virusFedSize) {
+        if (v.feed >= CFG.virusFeed) {
+          v.feed = 0;
           v.r = CFG.virusSize;
           if (virusCount < CFG.virusMax) setBoost(addNode(T_VIRUS, v.x, v.y, CFG.virusSize, v.color), ang, CFG.virusShot);
         }
@@ -406,7 +450,7 @@ function botThink(p) {
   let food = null, foodD = Infinity, virus = null;
   gridQuery(big.x - 700, big.y - 700, big.x + 700, big.y + 700, (n) => {
     const d = Math.hypot(n.x - big.x, n.y - big.y);
-    if (n.type === T_VIRUS) { if (big.r > n.r * CFG.eatRatio && d < big.r + n.r + 60) virus = n; }
+    if (n.type === T_VIRUS) { if (big.r > n.r * CFG.virusEatRatio && d < big.r + n.r + 60) virus = n; }
     else if (d < foodD && (n.type === T_FOOD || big.r > n.r * CFG.eatRatio)) { foodD = d; food = n; }
   });
   if (virus) {
@@ -674,6 +718,7 @@ function userscript(req) {
     tries++;
     if (window.core && typeof window.core.connect === 'function') {
       clearInterval(t);
+      try { if (typeof window.core.disableIntegrityChecks === 'function') window.core.disableIntegrityChecks(true); } catch (e) { console.error(e); }
       try { window.core.connect(TARGET); } catch (e) { console.error(e); }
     } else if (tries > 150) { clearInterval(t); }
   }, 300);
