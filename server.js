@@ -1,6 +1,14 @@
 'use strict';
 // Agar.io private server (FFA + bots) for the current web client (protocol 23, unencrypted).
-// No dependencies:  node server.js [--port 4400] [--bots 15] [--cert cert.pem --key key.pem]
+// No dependencies:  node server.js [--port 4400] [--bots 15] [--password clave] [--cert cert.pem --key key.pem]
+//
+// Hosting (Render / Railway / Koyeb / Fly...):
+//   - El puerto se toma de la variable PORT.
+//   - La clave de acceso se toma de la variable PASSWORD (o --password).
+//   - Cualquier opcion de CFG se puede poner como variable AGAR_<NOMBRE>, ej: AGAR_BOTS=20, AGAR_NAME="Mi server".
+//   - GET /          -> pagina con el boton de instalar el userscript
+//   - GET /agar.user.js -> userscript de Tampermonkey (se genera con tu dominio)
+//   - GET /health    -> para pings de uptime
 
 const http = require('http');
 const https = require('https');
@@ -9,11 +17,12 @@ const crypto = require('crypto');
 
 //CONFIG
 const CFG = {
-  port: 4400,
+  port: Number(process.env.PORT) || 4400,
   host: '0.0.0.0',
   cert: '', key: '',
+  password: process.env.PASSWORD || '',
   name: 'Private FFA',
-  maxClients: 200, maxPerIp: 4,
+  maxClients: 200, maxPerIp: 8,
   tickMs: 40,
   border: 7071,
   viewW: 1920, viewH: 1080, viewMult: 2.2,
@@ -29,6 +38,10 @@ const CFG = {
   leaderboardTicks: 25, nameMax: 15,
 };
 
+for (const k of Object.keys(CFG)) {
+  const e = process.env['AGAR_' + k.toUpperCase()];
+  if (e !== undefined && e !== '') CFG[k] = typeof CFG[k] === 'number' ? Number(e) : e;
+}
 for (let i = 2; i < process.argv.length; i += 2) {
   const k = process.argv[i].replace(/^--/, ''), v = process.argv[i + 1];
   if (!(k in CFG) || v === undefined) { console.error('Unknown option ' + process.argv[i]); process.exit(1); }
@@ -483,7 +496,7 @@ function onMessage(cl, m) {
   } else if (op === 0) {
     if (p.cells.length || tick - cl.spawnT < 10) return;
     let e = m.indexOf(0, 1); if (e < 0) e = m.length;
-    let name = m.subarray(1, e).toString('utf8').replace(/[\u0000-\u001f�]/g, '').trim();
+    let name = m.subarray(1, e).toString('utf8').replace(/[\u0000-\u001f\ufffd]/g, '').trim();
     name = Array.from(name).slice(0, CFG.nameMax).join('');
     p.name = name;
     cl.spawnT = tick; cl.spectate = false;
@@ -614,6 +627,116 @@ function gameTick() {
   eatenNow.clear();
 }
 
+//ACCESS
+// The password can come as ?key=... or as the first path segment (wss://host/clave).
+function safeEq(a, b) {
+  const x = crypto.createHash('sha256').update(String(a)).digest();
+  const y = crypto.createHash('sha256').update(String(b)).digest();
+  return crypto.timingSafeEqual(x, y);
+}
+function parseUrl(raw) { try { return new URL(raw || '/', 'http://x'); } catch (e) { return new URL('/', 'http://x'); } }
+function hasAccess(u) {
+  if (!CFG.password) return true;
+  const q = u.searchParams.get('key');
+  if (q !== null && safeEq(q, CFG.password)) return true;
+  let seg = '';
+  try { seg = decodeURIComponent(u.pathname.slice(1)); } catch (e) { }
+  return seg !== '' && safeEq(seg, CFG.password);
+}
+
+//WEB PAGE
+const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+function baseOf(req) {
+  const proto = String(req.headers['x-forwarded-proto'] || (tls ? 'https' : 'http')).split(',')[0].trim();
+  const host = String(req.headers['x-forwarded-host'] || req.headers.host || 'localhost:' + CFG.port).split(',')[0].trim();
+  return { http: proto + '://' + host, ws: (proto === 'https' ? 'wss' : 'ws') + '://' + host };
+}
+
+function userscript(req) {
+  const b = baseOf(req);
+  const target = b.ws + '/' + (CFG.password ? '?key=' + encodeURIComponent(CFG.password) : '');
+  const title = String(CFG.name).replace(/[\r\n]/g, ' ');
+  return `// ==UserScript==
+// @name         ${title} (agar.io)
+// @namespace    private-agar-server
+// @version      1.0
+// @description  Conecta agar.io a ${title}
+// @match        *://agar.io/*
+// @match        *://www.agar.io/*
+// @run-at       document-idle
+// @grant        none
+// ==/UserScript==
+(function () {
+  var TARGET = ${JSON.stringify(target)};
+  var tries = 0;
+  var t = setInterval(function () {
+    tries++;
+    if (window.core && typeof window.core.connect === 'function') {
+      clearInterval(t);
+      try { window.core.connect(TARGET); } catch (e) { console.error(e); }
+    } else if (tries > 150) { clearInterval(t); }
+  }, 300);
+})();
+`;
+}
+
+function page(req, full, q) {
+  const b = baseOf(req);
+  const target = b.ws + '/' + q;
+  const online = [...clients].filter((c) => c.ready).length;
+  const head = `<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>${esc(CFG.name)}</title>
+<style>
+:root{--bg:#0f1117;--card:#181b24;--tx:#e8eaf0;--mut:#8b91a3;--ac:#4ade80;--bd:#272b38}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--tx);font:16px/1.55 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;display:flex;justify-content:center;padding:32px 16px}
+main{width:100%;max-width:620px}
+h1{margin:0 0 4px;font-size:28px}
+.sub{color:var(--mut);margin:0 0 24px}
+.dot{display:inline-block;width:9px;height:9px;border-radius:50%;background:var(--ac);margin-right:6px}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:14px;padding:20px;margin-bottom:16px}
+.card h2{margin:0 0 10px;font-size:17px}
+ol{margin:0;padding-left:20px}li{margin:6px 0}
+a.btn,button{display:inline-block;background:var(--ac);color:#06210f;font-weight:600;border:0;border-radius:10px;padding:11px 18px;font-size:15px;text-decoration:none;cursor:pointer}
+button.sec{background:#262b3a;color:var(--tx)}
+code{display:block;background:#0b0d12;border:1px solid var(--bd);border-radius:8px;padding:10px 12px;margin:10px 0;overflow-x:auto;font-size:13px;white-space:nowrap}
+.mut{color:var(--mut);font-size:14px}
+</style></head><body><main>
+<h1>${esc(CFG.name)}</h1>
+<p class="sub"><span class="dot"></span>Servidor encendido &middot; ${online} jugador${online === 1 ? '' : 'es'} conectado${online === 1 ? '' : 's'}</p>`;
+  if (!full) return head + `<div class="card"><p class="mut" style="margin:0">Servidor privado. Usa el link con tu clave para ver las instrucciones.</p></div></main></body></html>`;
+  const script = b.http + '/agar.user.js' + q;
+  const cmd = `core.connect(${JSON.stringify(target)})`;
+  return head + `
+<div class="card"><h2>Entrar (una sola vez)</h2>
+<ol>
+<li>Instala la extension <b>Tampermonkey</b> en tu navegador (Chrome, Edge, Firefox, Opera, Brave...).</li>
+<li>Pulsa este boton y confirma la instalacion del script:<br><br><a class="btn" href="${esc(script)}">Instalar script</a></li>
+<li>Abre <b>agar.io</b>. Se conecta solo a este servidor. Pon tu nombre y dale a jugar.</li>
+</ol></div>
+<div class="card"><h2>Sin instalar nada</h2>
+<p class="mut" style="margin-top:0">Abre agar.io, pulsa F12, ve a <b>Consola</b>, pega esto y dale a Enter (hay que repetirlo cada vez que recargues):</p>
+<code id="cmd">${esc(cmd)}</code>
+<button class="sec" onclick="navigator.clipboard.writeText(document.getElementById('cmd').textContent).then(function(){this.textContent='Copiado'}.bind(this))">Copiar comando</button>
+</div>
+<p class="mut">No hace falta iniciar sesion. Comparte este mismo link solo con tus amigos: incluye la clave.</p>
+</main></body></html>`;
+}
+
+const handler = (req, res) => {
+  const u = parseUrl(req.url);
+  const send = (code, type, body) => { res.writeHead(code, { 'content-type': type + '; charset=utf-8', 'cache-control': 'no-store' }); res.end(body); };
+  if (u.pathname === '/health') return send(200, 'text/plain', 'ok\n');
+  const ok = !CFG.password || (u.searchParams.get('key') !== null && safeEq(u.searchParams.get('key'), CFG.password));
+  if (u.pathname === '/agar.user.js') return ok ? send(200, 'text/javascript', userscript(req)) : send(403, 'text/plain', 'forbidden\n');
+  if (u.pathname === '/') {
+    const q = CFG.password ? '?key=' + encodeURIComponent(CFG.password) : '';
+    return send(200, 'text/html', page(req, ok, q));
+  }
+  send(404, 'text/plain', 'not found\n');
+};
+
 //SERVER
 const perIp = new Map();
 function onUpgrade(req, sock) {
@@ -621,6 +744,11 @@ function onUpgrade(req, sock) {
   const ip = String(req.headers['cf-connecting-ip'] || req.headers['x-forwarded-for'] || sock.remoteAddress || '').split(',')[0].trim();
   const n = perIp.get(ip) || 0;
   if (!key || clients.size >= CFG.maxClients || n >= CFG.maxPerIp) { sock.destroy(); return; }
+  if (!hasAccess(parseUrl(req.url))) {
+    sock.write('HTTP/1.1 403 Forbidden\r\nConnection: close\r\nContent-Length: 0\r\n\r\n');
+    sock.destroy();
+    return;
+  }
   const accept = crypto.createHash('sha1').update(key + '258EAFA5-E914-47DA-95CA-C5AB0DC85B11').digest('base64');
   sock.write('HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: ' + accept + '\r\n\r\n');
   sock.setNoDelay(true);
@@ -641,12 +769,11 @@ function onUpgrade(req, sock) {
   };
 }
 
-const handler = (q, r) => { r.writeHead(200, { 'content-type': 'text/plain' }); r.end(`${CFG.name}: ${clients.size} players online\n`); };
 const tls = CFG.cert && CFG.key;
 const server = tls ? https.createServer({ cert: fs.readFileSync(CFG.cert), key: fs.readFileSync(CFG.key) }, handler) : http.createServer(handler);
 server.on('upgrade', onUpgrade);
 server.listen(CFG.port, CFG.host, () => {
-  console.log(`${CFG.name} listening on ${tls ? 'wss' : 'ws'}://${CFG.host}:${CFG.port}  (bots: ${CFG.bots})`);
+  console.log(`${CFG.name} listening on ${tls ? 'wss' : 'ws'}://${CFG.host}:${CFG.port}  (bots: ${CFG.bots}, password: ${CFG.password ? 'on' : 'off'})`);
 });
 
 for (let i = 0; i < CFG.foodAmount; i++) spawnFood();
