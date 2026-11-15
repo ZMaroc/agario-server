@@ -22,22 +22,21 @@ const CFG = {
   cert: '', key: '',
   password: process.env.PASSWORD || '',
   name: 'Private FFA',
+  adminPass: '6767', // clave para /login (tambien: AGAR_ADMINPASS=...)
   maxClients: 200, maxPerIp: 8,
   tickMs: 40,
-  border: 6364,                       // 7071 * 0.9  (mapa 10% mas pequeno)
+  border: 7071,
   viewW: 1920, viewH: 1080, viewMult: 2.2,
-  foodAmount: 1215, foodSpawnPerTick: 12, foodMin: 10, foodMax: 20,   // 1500 * 0.81 (misma densidad de comida)
-  virusAmount: 24, virusMax: 49, virusSize: 100, virusFeed: 7, virusShot: 580,   // 30/60 * 0.81
-  virusEatRatio: 1.1533,              // un virus solo te revienta si tu masa > 133% de la suya (sqrt(1.33) en radio)
-  virusPieceMass: 36, virusBigMass: 466,   // masa de cada pedazo pequeno al reventar / masa sobrante para partirse en trozos grandes
-  startSize: 114.89, botStartMass: 200, playerStartMass: 500,   // masa inicial: bots 200, jugadores reales 500 (radio = sqrt(masa*100))
-  maxSize: 1500, maxCells: 16, minSplitSize: 59.16, minEjectSize: 59.16,
+  foodAmount: 1500, foodSpawnPerTick: 12, foodMin: 10, foodMax: 20,
+  virusAmount: 30, virusMax: 60, virusSize: 100, virusFedSize: 141.4, virusShot: 780,
+  startSize: 114.89, maxSize: 1500, maxCells: 16,
+  minSplitSize: 59.16, minEjectSize: 59.16, // masa minima 35 (masa = r*r/100 -> r = sqrt(35*100))
   splitBoost: 780, ejectSize: 36.06, ejectLoss: 1800, ejectBoost: 780, ejectCooldown: 2, ejectMax: 2000,
   eatRatio: 1.118, eatOverlap: 0.4,
   mergeSec: 30, mergeSizeK: 0.2,
   decayPerSec: 0.002, decayMinSize: 32,
   speedK: 2.2 * 40, speedPow: -0.439,
-  bots: 40, botRespawnTicks: 50,
+  bots: 15, botRespawnTicks: 50,
   leaderboardTicks: 25, nameMax: 15,
 };
 
@@ -52,39 +51,14 @@ for (let i = 2; i < process.argv.length; i += 2) {
 }
 
 const B = CFG.border;
-// Nombres de bots tomados de https://agario-skins.net/agario-names
-const BOT_NAMES = [
-  "ヅ ༺Mчѕтιc༻ ✦", "꧁〖Øδ〗 Jσкєя꧂ ☽", "♛℣ℜσgυє丶ℜσηιη♛ 焱彡", "꧁🔰 Sιrιυѕ꧂ ฬ", "⛧Şнινєя⛧ ๖ۣۜǤнσsτ༻ ✧",
-  "☣ ☠Pιχєℓ•Zєρђყя☠ 一", "ヅFαηgヅ ༺", "❥Şαναgє❥ 『』 ꙰", "⛧ƘΞcℓιρѕє⛧☣", "☣Fαℓcση☣ 夜۝",
-  "༺Tυηdяα༻ 刃༻", "✞TняαѕнΞBιѕнσρ✞ ™", "꧁ΛTняαѕн×Wσℓƒ꧂ ⚡", "༺Ňσvα༻ ☠", "☾ℜιƒт丶Øηyx☽ ⛧ 一",
-  "♚ ♛ØĐяαcσ♛一一惡終", "Fαℓcση ♛ ☽", "❥ ꧁Mσятαℓ꧂一毒", "💀Vαℓнαℓℓα💀☾", "⚔☠ ΛLуηχ⚔ ♛",
-  "〖Øδ〗 ΛTυηdяα•Şђคđσฬ 數", "☣ ヅℜυιηヅ 神", "✞Fαℓcση✞ 〖Øδ〗", "⚡ Qυαятz丶Øяαcℓє一夜", "༺Kяαкєη༻ ™ ฬ",
-  "✖ ♛XTυявσ♛ 亡", "♛Dσσм♛✪", "❥Vσιd❥ ꧁✭ ✖", "〖Øδ〗 ヅMανєяιcкヅ 神", "Şρєcтєя ☣",
-  "☠ΛHєχ☠ツ", "⚔Tєяяσя⚔꙰", "♚ ❥ƤŞєηтιηєℓŇσvα❥一夜", "『ΔĐяιƒт』 數ฬ", "🔰 ⚡Şтσям×Şкυℓℓ⚡ 魔",
-  "『Ňσvα×Qυαятz』™", "♛ ⛧Vєηαтяιχ Cчcℓσηє⛧一氷", "〖Şєηтιηєℓ×Sιrιυѕ〗 🔰", "❥ ༺ØвℓινισηVαℓнαℓℓα༻ ☣", "⚔Đιєѕєℓ⚔ 🜏 ✦",
-  "☠Lуηχ☠ ヅ ヅ", "༺XPуяσ×Λяcтιc༻一", "♛ ⚡ŦIηƒєяησ⚡一漻", "⛧Qυαятz⛧ ♚", "☣Ǥнσsτ☣✖",
-  "⚔VαηdαℓMσятαℓ⚔ ™", "〖Hαναc〗 翼⚔", "☾ ⚡FяσѕтĐαggєя⚡一魔", "💀Fαηg💀 ♛ ✦", "⚡Vєηαтяιχ⚡ 刃ฬ",
-  "⚡ΔŞαναgє⚡ 毒࿊", "⚡ƘŞкυℓℓ丶Iηƒєяησ⚡™", "MGR! ✌ ⚡Mιdαѕ⚡一數", "✞❥ ℜαρтσя✞ ✪", "❥🐉 ΔCђασѕ×ℜєαρєя❥ メ",
-  "💀Fяσѕт💀 🜏", "⛧ 💀Şтσям💀一魔", "⛧ŇσvαΞPιχєℓ⛧⚡", "♛Đяαcσ♛ ™ 🔰", "🐉 ☣ŦMσηαяcн丶Hყdяα☣ 翼",
-  "❥ℜαρтσяŞαναgє❥ 闇✪", "『ΛєтнєяŞђคđσฬ』 ༗✧", "☾ 💀CσмєtΞCσвяα💀一魂", "⚔ ☾Pυℓѕαя•Şнσgυη☽ ۝", "〖Øδ〗 ♛Đιєѕєℓ•Cяιмѕση♛ ✞",
-  "⚔Øηyx⚔☢", "⚡ℜєαρєя⚡ ƬψƬ ☢", "༺ℜσgυє༻ 幻꙰", "☠🐉 Mαмвα☠ ꙰", "✞Mσηαяcн✞ ☾",
-  "✈ ⚡ØTємρєѕт⚡ 刃", "꧁✭ ❥ƤCσвяα❥ 一", "⚔Mαgмα×Fαℓcση⚔ ❥ ヅ", "༺Iηƒєяησ༻ ☣ ✞", "☠Mσηαяcн丶Vєηαтяιχ☠⚡",
-  "๖ۣۜǤнσsτ༻ ⚡Ňєχυѕ×Cяιмѕση⚡一夜", "Şρєcтєя✞", "⛧ ☾Ňєυтяση☽一爱", "〖ŦIηƒєяησ〗۝", "ヅBιѕнσρMσятαℓヅ 爪么",
-  "꧁✭ ♛VØЯŦΞЖΞSιrιυѕ♛一玄", "☠Vαηdαℓ丶Đяαcσ☠⚡", "☣ ✞Şнσgυη✞一炎", "⚡ℜιƒт丶Bℓιgнт⚡ ⚔ ꙰", "💀Øяαcℓє💀 ๖ۣۜǤнσsτ༻",
-  "☣Ǥнσsτ丶Vєηαтяιχ☣ ☾", "🔰 ☣Øηyx☣一爱", "⚔ Λρєχ ฬ", "⚡Λzяαєℓ⚡么", "༺꧁✭ Pυℓѕαя Jσкєя༻ ツ",
-  "Λzяαєℓ ♛ ☢", "Gℓιтcн 〖Øδ〗", "〖🐉 Mιdαѕ〗 ™", "꧁ƤTυявσ꧂ 緑ฬ", "🜏 ⚡ŻŞρєcтєя⚡一覇",
-  "💀꧁✭ ŻMιяαgє💀 ⚔", "☣Tυηdяα×Cяιмѕση☣ ✈ ฬ", "🔥 Fυяу ۝", "༺ℜαρтσя丶Øвℓινιση༻⚔", "™ ☣Fαηg☣ ☽",
-  "☠ŻŇєυтяση☠ ฬ✖", "⚡☾ Ňιgнтмαяє⚡ ツ", "☣ ♛Fяσѕт♛一炎", "ƬψƬ ☢ ☠Tняαѕн Tυηdяα☠ ࿊", "〖Øδ〗 〖Pуяσ Sιrιυѕ〗 表",
-  "♚ ✞Hαναc•Cιηdєя✞ ꙰", "Mσятαℓ 〘🍩〙✈", "💀⛧ Hєχ💀 么", "⚡ ❥ℜαρтσя❥ ❥", "🐉 ☾ΛяcтιcΞJσкєя☽ ฬ",
-  "༺Ňιgнтмαяє༻ ☽", "☣Mαмвα•ℜσgυє☣ ✖ ☢", "✞Qυαятz✞ ƬψƬ ☢ ꙰", "Tυηdяα 神⚔", "⚡Bℓιgнт⚡ฬ",
-  "『Ňσvα』 ✖ ⚔", "☠Vαηdαℓ☠ 表么", "☣Fυяу☣ ☠", "☠Fяσѕт☠ 幻☽", "⚔ØGℓιтcн⚔ツ",
-];
+const BOT_NAMES = ['Nova', 'Pixel', 'Rex', 'Luna', 'Kiwi', 'Turbo', 'Mango', 'Zed', 'Coco', 'Blitz', 'Echo', 'Fizz', 'Gizmo', 'Halo', 'Indy',
+  'Jinx', 'Koda', 'Lynx', 'Momo', 'Nix', 'Onyx', 'Pogo', 'Quill', 'Rolo', 'Sumo', 'Taco', 'Uno', 'Vex', 'Wasp', 'Yeti'];
 
 //WEBSOCKET
 class Conn {
   constructor(sock, req) {
     this.sock = sock; this.req = req; this.buf = Buffer.alloc(0); this.frag = []; this.open = true;
-    this.onmessage = null; this.onclose = null;
+    this.onmessage = null; this.onclose = null; this.fop = 2;
     sock.on('data', (d) => this.data(d));
     sock.on('close', () => this.end());
     sock.on('error', () => this.end());
@@ -113,12 +87,13 @@ class Conn {
       if (op === 8) return this.end();
       if (op === 9) { this.raw(10, p); continue; }
       if (op === 10) continue;
+      if (op) this.fop = op;
       this.frag.push(p);
       if (this.frag.length > 8) return this.end();
       if (fin) {
         const m = this.frag.length === 1 ? this.frag[0] : Buffer.concat(this.frag);
         this.frag = [];
-        if (this.onmessage) this.onmessage(m);
+        if (this.onmessage) this.onmessage(m, this.fop);
       }
     }
   }
@@ -258,10 +233,9 @@ function newPlayer(name, bot) {
 
 function spawnPlayer(p) {
   if (p.cells.length) return null;
-  const r = Math.sqrt((p.bot ? CFG.botStartMass : CFG.playerStartMass) * 100);
-  const s = freeSpot(r);
+  const s = freeSpot(CFG.startSize);
   p.color = color();
-  const c = addNode(T_PLAYER, s.x, s.y, r, p.color, p);
+  const c = addNode(T_PLAYER, s.x, s.y, CFG.startSize, p.color, p);
   p.mx = s.x; p.my = s.y;
   return c;
 }
@@ -299,34 +273,18 @@ function playerEject(p) {
   }
 }
 
-// Reventar con un virus (mismo esquema que los servidores abiertos tipo MultiOgar):
-//  - la celula ya sumo la masa del virus antes de llamar aqui
-//  - se parte en el maximo de piezas posible hasta maxCells (cada pieza minimo ~10 de masa)
-//  - las piezas pequenas pesan como maximo virusPieceMass; si es una celula pequena se reparte parejo
-//  - si la masa que sobra es muy grande (> virusBigMass) se desprenden hasta 3 trozos grandes (mitades)
 function popCell(c) {
   const p = c.owner;
   const room = CFG.maxCells - p.cells.length;
   if (room <= 0) return;
   const mass = c.r * c.r / 100;
-  const minMass = CFG.decayMinSize * CFG.decayMinSize / 100;   // pieza minima ~10 de masa: se parte en el maximo de celdas posible
-  const n = Math.min(room, Math.floor(mass / minMass) - 1);
-  if (n < 1) return;
-  const small = Math.min(mass / (n + 1), CFG.virusPieceMass);
-  let smallN = n, rest = mass - small * n;
-  const bigs = [];
-  while (rest > CFG.virusBigMass && smallN > 0 && bigs.length < 3) {
-    smallN--; rest += small;
-    const half = rest / 2;
-    bigs.push(half); rest -= half;
-  }
-  const sizes = [];
-  for (let i = 0; i < smallN; i++) sizes.push(Math.sqrt(small * 100));
-  for (const m of bigs) sizes.push(Math.sqrt(m * 100));
-  c.r = Math.sqrt(rest * 100);
+  const count = Math.min(room, Math.floor(mass * 0.6 / 20));
+  if (count < 1) return;
+  const piece = mass * 0.6 / count;
+  c.r = Math.sqrt((mass - piece * count) * 100);
   c.born = tick;
-  const a0 = Math.random() * 6.2832;
-  for (let i = 0; i < sizes.length; i++) splitCell(c, a0 + i * 6.2832 / sizes.length, sizes[i], CFG.splitBoost * 0.85);
+  const a0 = Math.random() * 6.28;
+  for (let i = 0; i < count; i++) splitCell(c, a0 + i * 6.2832 / count, Math.sqrt(piece * 100), CFG.splitBoost * 0.85);
 }
 
 function canMerge(c) { return tick - c.born >= Math.max(CFG.mergeSec, c.r * CFG.mergeSizeK) * 25; }
@@ -383,10 +341,11 @@ function collide() {
       const d = Math.hypot(n.x - c.x, n.y - c.y);
       if (d >= c.r - n.r * CFG.eatOverlap) continue;
       if (n.type === T_FOOD) eat(c, n);
-      else if (n.type === T_VIRUS) {
-        if (c.r > n.r * CFG.virusEatRatio) { eat(c, n); popCell(c); }
+      else if (c.r > n.r * CFG.eatRatio) {
+        const virus = n.type === T_VIRUS;
+        eat(c, n);
+        if (virus) popCell(c);
       }
-      else if (c.r > n.r * CFG.eatRatio) eat(c, n);
     }
     found.length = 0;
     gridQuery(c.x - c.r, c.y - c.r, c.x + c.r, c.y + c.r, (n) => found.push(n), pgrid);
@@ -395,7 +354,7 @@ function collide() {
       const d = Math.hypot(n.x - c.x, n.y - c.y);
       if (d >= c.r - n.r * CFG.eatOverlap) continue;
       if (n.owner === c.owner) { if (canMerge(c) && canMerge(n)) eat(c, n); }
-      else if (c.r > n.r * CFG.eatRatio) eat(c, n);
+      else if (!n.owner.god && c.r > n.r * CFG.eatRatio) eat(c, n);
     }
   }
 }
@@ -411,13 +370,10 @@ function stepMoving() {
       gridQuery(n.x - 200, n.y - 200, n.x + 200, n.y + 200, (v) => { if (v.type === T_VIRUS) found.push(v); });
       for (const v of found) {
         if (v.dead || Math.hypot(v.x - n.x, v.y - n.y) >= v.r) continue;
-        if (virusCount >= CFG.virusMax) continue;   // como en Ogar: con el maximo de virus, las masas lanzadas los atraviesan
         const ang = n.boost ? Math.atan2(n.boost.dy, n.boost.dx) : Math.random() * 6.28;
         v.r = Math.sqrt(v.r * v.r + n.r * n.r); v.moved = tick;
-        v.feed = (v.feed || 0) + 1;
         delNode(n, v);
-        if (v.feed >= CFG.virusFeed) {
-          v.feed = 0;
+        if (v.r >= CFG.virusFedSize) {
           v.r = CFG.virusSize;
           if (virusCount < CFG.virusMax) setBoost(addNode(T_VIRUS, v.x, v.y, CFG.virusSize, v.color), ang, CFG.virusShot);
         }
@@ -453,7 +409,7 @@ function botThink(p) {
   let food = null, foodD = Infinity, virus = null;
   gridQuery(big.x - 700, big.y - 700, big.x + 700, big.y + 700, (n) => {
     const d = Math.hypot(n.x - big.x, n.y - big.y);
-    if (n.type === T_VIRUS) { if (big.r > n.r * CFG.virusEatRatio && d < big.r + n.r + 60) virus = n; }
+    if (n.type === T_VIRUS) { if (big.r > n.r * CFG.eatRatio && d < big.r + n.r + 60) virus = n; }
     else if (d < foodD && (n.type === T_FOOD || big.r > n.r * CFG.eatRatio)) { foodD = d; food = n; }
   });
   if (virus) {
@@ -471,6 +427,133 @@ function botNames() {
   for (const p of players) used.add(p.name);
   const free = BOT_NAMES.filter((n) => !used.has(n));
   return free.length ? free[Math.floor(Math.random() * free.length)] : 'Bot ' + Math.floor(Math.random() * 900 + 100);
+}
+
+//COMMANDS
+// Se escriben en el chat del juego (/login 6767) o, con el userscript, en la consola F12: cmd('/login 6767')
+const massOf = (r) => r * r / 100;
+const totalMass = (p) => p.cells.reduce((s, c) => s + massOf(c.r), 0);
+const fmt = (v) => String(Math.round(v * 10) / 10);
+
+function say(cl, text) {
+  const w = new Writer(32 + text.length * 3);
+  w.u8(99); w.u8(0x80); w.u8(74); w.u8(222); w.u8(128); w.str('Server'); w.str(text);
+  cl.conn.send(w.out());
+  if (cl.console) {
+    const t = Buffer.from(text, 'utf8'), o = Buffer.alloc(t.length + 1);
+    o[0] = 0xf5; t.copy(o, 1);
+    cl.conn.send(o);
+  }
+}
+
+function setTotalMass(p, target) {
+  const cur = totalMass(p);
+  if (!cur) return;
+  const k = Math.sqrt(Math.max(target, 0) / cur);
+  for (const c of p.cells) { c.r = clamp(c.r * k, CFG.decayMinSize, CFG.maxSize); c.moved = tick; }
+}
+
+function teleport(p, x, y) {
+  let cx = 0, cy = 0;
+  for (const c of p.cells) { cx += c.x; cy += c.y; }
+  cx /= p.cells.length; cy /= p.cells.length;
+  for (const c of p.cells) {
+    const m = c.r / 2;
+    c.x = clamp(x + (c.x - cx), -B + m, B - m);
+    c.y = clamp(y + (c.y - cy), -B + m, B - m);
+    c.boost = null; c.moved = tick;
+    gridMove(c);
+  }
+  p.mx = x; p.my = y;
+}
+
+const HELP = [
+  '/mass N  -> tu masa total pasa a N',
+  '/add N  /quitar N  -> sumar / restar masa',
+  '/tp  -> teleport al cursor  |  /tp X Y -> a unas coordenadas',
+  '/tpclick on|off  -> teleport con click izquierdo (requiere el userscript)',
+  '/merge  -> junta todas tus celulas al instante',
+  '/virus  -> crea un virus en el cursor  |  /food N -> comida en el cursor',
+  '/god  -> no te comen otros jugadores  |  /logout',
+].join('\n');
+
+function runCommand(cl, line) {
+  const a = String(line).trim().slice(0, 200).split(/\s+/);
+  const name = (a.shift() || '').toLowerCase();
+  const p = cl.player;
+  if (!name) return;
+
+  if (name === 'login') {
+    if (cl.admin) return say(cl, 'Ya estas dentro.');
+    if (cl.authFails >= 5) return say(cl, 'Demasiados intentos.');
+    if (a[0] !== undefined && safeEq(a[0], CFG.adminPass)) { cl.admin = true; return say(cl, 'Login correcto. Escribe /help'); }
+    cl.authFails++;
+    return say(cl, 'Clave incorrecta.');
+  }
+  if (name === 'tpc') { // click del userscript: solo actua si ya hiciste /login y /tpclick on
+    if (cl.admin && p.tpClick && p.cells.length) teleport(p, p.mx, p.my);
+    return;
+  }
+  if (!cl.admin) return say(cl, 'Usa /login <clave> primero.');
+
+  const n = Number(a[0]);
+  const alive = p.cells.length > 0;
+  const needAlive = () => { if (!alive) say(cl, 'Estas muerto: entra a jugar primero.'); return !alive; };
+  switch (name) {
+    case 'help': case 'ayuda': return say(cl, HELP);
+    case 'logout': cl.admin = false; p.tpClick = false; p.god = false; return say(cl, 'Sesion cerrada.');
+    case 'mass': case 'masa':
+      if (!Number.isFinite(n)) return say(cl, 'Uso: /mass 500');
+      if (needAlive()) return;
+      setTotalMass(p, n);
+      return say(cl, 'Masa total: ' + fmt(totalMass(p)));
+    case 'add': case 'sumar': case 'quitar': case 'rem': case 'remove': case 'sub': {
+      if (!Number.isFinite(n)) return say(cl, 'Uso: /add 200  o  /quitar 200');
+      if (needAlive()) return;
+      const sign = (name === 'add' || name === 'sumar') ? 1 : -1;
+      setTotalMass(p, totalMass(p) + sign * Math.abs(n));
+      return say(cl, 'Masa total: ' + fmt(totalMass(p)));
+    }
+    case 'tp':
+      if (needAlive()) return;
+      if (a.length >= 2 && Number.isFinite(n) && Number.isFinite(Number(a[1]))) teleport(p, clamp(n, -B, B), clamp(Number(a[1]), -B, B));
+      else teleport(p, p.mx, p.my);
+      return say(cl, 'TP a ' + Math.round(p.cells[0].x) + ', ' + Math.round(p.cells[0].y));
+    case 'tpclick':
+      p.tpClick = a[0] ? a[0].toLowerCase() === 'on' : !p.tpClick;
+      return say(cl, 'TP con click: ' + (p.tpClick ? 'ON' : 'OFF'));
+    case 'merge': {
+      if (needAlive()) return;
+      let sx = 0, sy = 0, sm = 0;
+      for (const c of p.cells) { const m = c.r * c.r; sx += c.x * m; sy += c.y * m; sm += m; }
+      for (const c of p.cells) { c.x = sx / sm; c.y = sy / sm; c.born = -1e6; c.boost = null; gridMove(c); }
+      return say(cl, 'Celulas unidas.');
+    }
+    case 'virus':
+      if (needAlive()) return;
+      addNode(T_VIRUS, clamp(p.mx, -B + CFG.virusSize, B - CFG.virusSize), clamp(p.my, -B + CFG.virusSize, B - CFG.virusSize), CFG.virusSize, [51, 255, 51]);
+      return say(cl, 'Virus creado.');
+    case 'food': case 'comida': {
+      if (needAlive()) return;
+      const cnt = Math.min(Number.isFinite(n) ? Math.floor(n) : 20, 300);
+      for (let i = 0; i < cnt; i++) {
+        const r = rnd(CFG.foodMin, CFG.foodMax), ang = rnd(0, 6.2832), d = rnd(0, 400);
+        addNode(T_FOOD, clamp(p.mx + Math.cos(ang) * d, -B + r, B - r), clamp(p.my + Math.sin(ang) * d, -B + r, B - r), r, color());
+      }
+      return say(cl, cnt + ' comida creada.');
+    }
+    case 'god':
+      p.god = !p.god;
+      return say(cl, 'God mode: ' + (p.god ? 'ON' : 'OFF'));
+    default: return say(cl, 'Comando desconocido. /help');
+  }
+}
+
+// Frames de texto: los manda el userscript (cmd('/login 6767')); no pasan por el cifrado del juego.
+function onText(cl, s) {
+  cl.console = true;
+  s = String(s).trim();
+  if (s) runCommand(cl, s[0] === '/' ? s.slice(1) : s);
 }
 
 //CLIENTS
@@ -551,6 +634,12 @@ function onMessage(cl, m) {
   } else if (op === 1) { if (!p.cells.length) cl.spectate = true; }
   else if (op === 17) { if (p.split < 4) p.split++; }
   else if (op === 21) p.eject = true;
+  else if (op === 99) { // chat del juego: solo se usan los mensajes que empiezan por /
+    const fl = m[1], skip = 2 + (fl & 2 ? 4 : 0) + (fl & 4 ? 8 : 0) + (fl & 8 ? 16 : 0);
+    if (m.length <= skip) return;
+    const text = Buffer.from(m.subarray(skip).filter((b) => b !== 0)).toString('utf8').trim();
+    if (text[0] === '/') runCommand(cl, text.slice(1));
+  }
 }
 
 function viewOf(cl) {
@@ -707,7 +796,7 @@ function userscript(req) {
   return `// ==UserScript==
 // @name         ${title} (agar.io)
 // @namespace    private-agar-server
-// @version      1.0
+// @version      1.1
 // @description  Conecta agar.io a ${title}
 // @match        *://agar.io/*
 // @match        *://www.agar.io/*
@@ -716,12 +805,37 @@ function userscript(req) {
 // ==/UserScript==
 (function () {
   var TARGET = ${JSON.stringify(target)};
+  var HOST = '';
+  try { HOST = new URL(TARGET).host; } catch (e) { }
+  var ws = null;
+  // Captura el websocket del juego para poder mandar comandos por la consola: cmd('/login 6767')
+  var send0 = WebSocket.prototype.send;
+  WebSocket.prototype.send = function () {
+    try {
+      if (this !== ws && this.url && new URL(this.url).host === HOST) {
+        ws = this;
+        ws.addEventListener('message', function (ev) {
+          if (ev.data instanceof ArrayBuffer && ev.data.byteLength > 1) {
+            var a = new Uint8Array(ev.data);
+            if (a[0] === 0xf5) console.log('%c[server]', 'color:#4ade80', new TextDecoder().decode(a.subarray(1)));
+          }
+        });
+      }
+    } catch (e) { }
+    return send0.apply(this, arguments);
+  };
+  window.cmd = function (t) {
+    if (ws && ws.readyState === 1) ws.send(String(t)); else console.warn('Sin conexion al server privado');
+  };
+  // Click izquierdo sobre el juego: el server solo teletransporta si hiciste /login y /tpclick on
+  document.addEventListener('mousedown', function (e) {
+    if (e.button === 0 && e.target && e.target.tagName === 'CANVAS' && ws && ws.readyState === 1) ws.send('tpc');
+  }, true);
   var tries = 0;
   var t = setInterval(function () {
     tries++;
     if (window.core && typeof window.core.connect === 'function') {
       clearInterval(t);
-      try { if (typeof window.core.disableIntegrityChecks === 'function') window.core.disableIntegrityChecks(true); } catch (e) { console.error(e); }
       try { window.core.connect(TARGET); } catch (e) { console.error(e); }
     } else if (tries > 150) { clearInterval(t); }
   }, 300);
@@ -802,11 +916,11 @@ function onUpgrade(req, sock) {
   sock.setNoDelay(true);
   perIp.set(ip, n + 1);
   const conn = new Conn(sock, req);
-  const cl = { conn, ip, proto: 0, key: 0, pkey: 0, ready: false, spectate: false, view: new Set(), player: newPlayer('', false), cx: 0, cy: 0, scale: 1, spawnT: -100 };
+  const cl = { conn, ip, proto: 0, key: 0, pkey: 0, ready: false, spectate: false, view: new Set(), player: newPlayer('', false), cx: 0, cy: 0, scale: 1, spawnT: -100, admin: false, authFails: 0, console: false };
   cl.player.client = cl;
   clients.add(cl);
   console.log(`[+] ${ip} connected (${clients.size} online)`);
-  conn.onmessage = (m) => { try { onMessage(cl, m); } catch (e) { conn.end(); } };
+  conn.onmessage = (m, op) => { try { if (op === 1) onText(cl, m.toString('utf8')); else onMessage(cl, m); } catch (e) { conn.end(); } };
   conn.onclose = () => {
     clients.delete(cl);
     const left = (perIp.get(ip) || 1) - 1;
