@@ -18,14 +18,15 @@ const CFG = {
   border: 7071,
   viewW: 1920, viewH: 1080, viewMult: 2.2,
   foodAmount: 1500, foodSpawnPerTick: 12, foodMin: 10, foodMax: 20,
-  virusAmount: 30, virusMax: 60, virusSize: 100, virusFeeds: 7, virusShot: 780, virusEatMassRatio: 1.33, popMinPiece: 16,
+  virusAmount: 30, virusMax: 60, virusSize: 100, virusFeeds: 7, virusShot: 780, virusEatMassRatio: 1.3225, popMaxPiece: 60,
   startSize: 223.61, botStartSize: 141.42, maxSize: 1500, maxCells: 16, minSplitSize: 59.16, minEjectSize: 59.16,
   splitBoost: 780, ejectSize: 36.06, ejectLoss: 1800, ejectBoost: 780, ejectCooldown: 2, ejectMax: 2000,
-  eatRatio: 1.118, eatOverlap: 0.4,
+  eatRatio: 1.15, eatOverlap: 1 / 3,
   mergeSec: 30, mergeSizeK: 0.2,
   decayPerSec: 0.002, decayMinSize: 32,
-  speedK: 2.2 * 40, speedPow: -0.439,
-  bots: 15, botRespawnTicks: 50,
+  speedK: 2.2 * 40, speedPow: -0.45,
+  bots: 50, botRespawnTicks: 50,
+  admin: process.env.ADMIN_PASSWORD || 'maroc1234',
   leaderboardTicks: 25, nameMax: 15,
   debug: 0,
 };
@@ -33,12 +34,28 @@ const CFG = {
 for (let i = 2; i < process.argv.length; i += 2) {
   const k = process.argv[i].replace(/^--/, ''), v = process.argv[i + 1];
   if (!(k in CFG) || v === undefined) { console.error('Unknown option ' + process.argv[i]); process.exit(1); }
+  if (k === 'admin') { CFG.admin = String(v); continue; }
   CFG[k] = typeof CFG[k] === 'number' ? Number(v) : v;
 }
 
 const B = CFG.border;
-const BOT_NAMES = ['Nova', 'Pixel', 'Rex', 'Luna', 'Kiwi', 'Turbo', 'Mango', 'Zed', 'Coco', 'Blitz', 'Echo', 'Fizz', 'Gizmo', 'Halo', 'Indy',
-  'Jinx', 'Koda', 'Lynx', 'Momo', 'Nix', 'Onyx', 'Pogo', 'Quill', 'Rolo', 'Sumo', 'Taco', 'Uno', 'Vex', 'Wasp', 'Yeti'];
+const BOT_NAMES = ["ヅ ༺Mчѕтιc༻ ✦", "꧁〖Øδ〗 Jσкєя꧂ ☽", "꧁🔰 Sιrιυѕ꧂ ฬ", "ヅFαηgヅ ༺", "❥Şαναgє❥ 『』 ꙰", "⛧ƘΞcℓιρѕє⛧☣", "☣Fαℓcση☣ 夜۝", "༺Tυηdяα༻ 刃༻",
+  "༺Ňσvα༻ ☠", "☾ℜιƒт丶Øηyx☽ ⛧ 一", "♚ ♛ØĐяαcσ♛一一惡終", "Fαℓcση ♛ ☽", "❥ ꧁Mσятαℓ꧂一毒", "💀Vαℓнαℓℓα💀☾", "⚔☠ ΛLуηχ⚔ ♛", "☣ ヅℜυιηヅ 神", "✞Fαℓcση✞ 〖Øδ〗",
+  "༺Kяαкєη༻ ™ ฬ", "✖ ♛XTυявσ♛ 亡", "♛Dσσм♛✪", "❥Vσιd❥ ꧁✭ ✖", "Şρєcтєя ☣", "☠ΛHєχ☠ツ", "⚔Tєяяσя⚔꙰", "『ΔĐяιƒт』 數ฬ", "『Ňσvα×Qυαятz』™", "⚔Đιєѕєℓ⚔ 🜏 ✦",
+  "☠Lуηχ☠ ヅ ヅ", "༺XPуяσ×Λяcтιc༻一", "♛ ⚡ŦIηƒєяησ⚡一漻", "⛧Qυαятz⛧ ♚", "☣Ǥнσsτ☣✖", "〖Hαναc〗 翼⚔", "💀Fαηg💀 ♛ ✦", "⚡Vєηαтяιχ⚡ 刃ฬ", "⚡ΔŞαναgє⚡ 毒࿊",
+  "✞❥ ℜαρтσя✞ ✪", "💀Fяσѕт💀 🜏", "⛧ 💀Şтσям💀一魔", "⛧ŇσvαΞPιχєℓ⛧⚡", "♛Đяαcσ♛ ™ 🔰", "⚔Øηyx⚔☢", "⚡ℜєαρєя⚡ ƬψƬ ☢", "༺ℜσgυє༻ 幻꙰", "☠🐉 Mαмвα☠ ꙰",
+  "✞Mσηαяcн✞ ☾", "✈ ⚡ØTємρєѕт⚡ 刃", "꧁✭ ❥ƤCσвяα❥ 一", "༺Iηƒєяησ༻ ☣ ✞", "Şρєcтєя✞", "⛧ ☾Ňєυтяση☽一爱", "〖ŦIηƒєяησ〗۝", "☠Vαηdαℓ丶Đяαcσ☠⚡", "☣ ✞Şнσgυη✞一炎",
+  "🔰 ☣Øηyx☣一爱", "⚔ Λρєχ ฬ", "⚡Λzяαєℓ⚡么", "Λzяαєℓ ♛ ☢", "Gℓιтcн 〖Øδ〗", "〖🐉 Mιdαѕ〗 ™", "꧁ƤTυявσ꧂ 緑ฬ", "🜏 ⚡ŻŞρєcтєя⚡一覇", "💀꧁✭ ŻMιяαgє💀 ⚔", "🔥 Fυяу ۝",
+  "™ ☣Fαηg☣ ☽", "☠ŻŇєυтяση☠ ฬ✖", "⚡☾ Ňιgнтмαяє⚡ ツ", "☣ ♛Fяσѕт♛一炎", "Mσятαℓ 〘🍩〙✈", "💀⛧ Hєχ💀 么", "⚡ ❥ℜαρтσя❥ ❥", "༺Ňιgнтмαяє༻ ☽", "Tυηdяα 神⚔",
+  "⚡Bℓιgнт⚡ฬ", "『Ňσvα』 ✖ ⚔", "☠Vαηdαℓ☠ 表么", "☣Fυяу☣ ☠", "☠Fяσѕт☠ 幻☽", "⚔ØGℓιтcн⚔ツ", "✞Λρєχ✞ 焱✈", "⚔🐉 Hყdяα⚔ ☠", "⚡Λρєχ Łσкι⚡✪", "🐉 ✞Şρєcтєя✞ ♛",
+  "༺⛧ Øвℓινιση༻ ✪", "✈ 〖Cђασѕ〗 ࿊", "🔥 ☣Şнσgυη☣ 一", "❥ΔŞαναgє❥ 〖Øδ〗", "⛧ƘCσмєт⛧ 爪۝", "꧁Şтяүкєя꧂꙰", "💀⚔ ŦVσιd💀 ☾", "💀ΛŞђคđσฬ💀 夜ツ", "⛧ŦMσятαℓ⛧ 🜏 ☠",
+  "✖ ♛Pιχєℓ♛一氷", "꧁✞ Λєтнєя꧂ ✪", "♚ ꧁XΛzяαєℓ꧂ ฬ", "☾Iηƒєяησ☽ ༺ ✧", "⛧Fαηg⛧ ƬψƬ ☢", "⛧Fαℓcση⛧ ☽", "꧁ℜคvєη꧂ 翼✪", "✖ ༺Đяαcσ༻ ꙰", "⚔℣ℜυιη⚔ ♛ ✈",
+  "〖Ŧℜage〗 ꧁✭", "ヅCσмєтヅ™", "༺ ꧁Hαναc꧂一玄", "♛ ꧁ℜυιη꧂ 漻", "✈ ꧁Hყdяα꧂ ฬ", "♛Hєχ♛ ☠", "⚡ ☾ℜυιη☽一氷", "VØЯŦΞЖ ✞", "✞ℜαмραgє✞ ✈ メ", "💀💀 Øвℓινιση💀 彡",
+  "❥Mαgмα❥ ヅ", "✞☽ Şђคđσฬ✞ ✖", "MGR! ✌ ØFяσѕт ™", "💀 ༺Şтєℓℓαя༻ ✧", "꧁✭ ☾Cσѕмσ☽ 夜", "💀 ❥ŦMαмвα❥ 氷", "✞Cяιмѕση✞ 一惡終☽", "⛧Şαναgє⛧ ༺ ฬ", "💀Fяσѕт💀⚡",
+  "☢ ヅŇσvαヅ ☣", "❥ ⛧Đяιƒт⛧ 刃", "⚔ ♛Gℓιтcн♛一氷", "✞Λєтнєя✞ 🔥 ✈", "⚔XFяσѕт⚔✞", "☾XMανєяιcк☽⚔", "⛧✈ Şєηтιηєℓ⛧ ♛", "⛧Ǥнσsτ丶Tєяяσя⛧☣", "꧁Vєทσм꧂ 數✦",
+  "🜏 ヅMσηαяcнヅ ☣", "🜏 💀Bιѕнσρ💀一炎", "꧁✭ ⚡Iηƒєяησ⚡ ☾", "💀❥ Bιѕнσρ💀 ✖", "♛XŇσvα♛ ヅ", "⚔Tняαѕн⚔么", "Mαмвα ☽", "☣ ❥Đαggєя❥ 氷", "꧁Pιχєℓ Jσкєя꧂ฬ",
+  "⚡ ŦMчѕтιc ⚡", "♚ ༺Ňσcтιѕ༻一翼", "❥™ ℜιƒт❥ ✖", "〖ℜคvєη〗 漻☽", "⚔Øηyx⚔ ♛", "ヅ ⛧Fυяу⛧ ☣", "ヅMιяαgєヅ 🔥", "『ƤHαναc』 MGR! ✌", "☣ ☣Pуяσ☣ 玄", "☣ℜιƒт☣✈",
+  "💀VØЯŦΞЖ💀 『』", "ŻBєяѕєяк 魔✖", "『Bℓιgнт』一", "꧁♚ Mαgмα꧂ 彡", "☾ ☾ØTємρєѕт☽ ♛", "⚔Iηƒєяησ⚔✞", "☾ ❥Λzяαєℓ❥一雷"];
 
 //WEBSOCKET
 class Conn {
@@ -242,7 +259,7 @@ function playerSplit(p) {
     if (dx * dx + dy * dy < 1) { dx = 1; dy = 0; }
     c.r /= Math.SQRT2;
     c.born = tick;
-    splitCell(c, Math.atan2(dy, dx), c.r, CFG.splitBoost);
+    splitCell(c, Math.atan2(dy, dx), c.r, CFG.splitBoost * Math.pow(c.r, 0.0122));
   }
 }
 
@@ -260,25 +277,37 @@ function playerEject(p) {
   }
 }
 
+// Virus pop, ported from MultiOgarII (Virus.onEaten): equal pieces for small cells, half-half cascade for big ones.
 function popCell(c) {
   const p = c.owner;
-  const room = CFG.maxCells - p.cells.length;
-  if (room <= 0) return;
-  let mass = c.r * c.r / 100;
-  let count = Math.min(room, Math.floor(mass / CFG.popMinPiece) - 1);
-  if (count < 1) return;
-  const keep = Math.max(mass / (count + 1), mass * 0.3);
-  let left = mass - keep;
-  c.r = Math.sqrt(keep * 100);
+  let cellsLeft = CFG.maxCells - p.cells.length;
+  if (cellsLeft <= 0) return;
+  const splitMin = CFG.popMaxPiece * CFG.popMaxPiece / 100;
+  const cellMass = c.r * c.r / 100, splits = [];
+  if (cellMass / cellsLeft < splitMin) {
+    let splitCount = 2, splitMass = cellMass / splitCount;
+    while (splitMass > splitMin && splitCount * 2 < cellsLeft) splitMass = cellMass / (splitCount *= 2);
+    splitMass = cellMass / (splitCount + 1);
+    while (splitCount-- > 0) splits.push(splitMass);
+  } else {
+    let splitMass = cellMass / 2, massLeft = cellMass / 2;
+    while (cellsLeft-- > 0) {
+      if (massLeft / cellsLeft < splitMin) {
+        splitMass = massLeft / cellsLeft;
+        while (cellsLeft-- > 0) splits.push(splitMass);
+        break;
+      }
+      while (splitMass >= massLeft && cellsLeft > 0) splitMass /= 2;
+      splits.push(splitMass);
+      massLeft -= splitMass;
+    }
+  }
   c.born = tick;
-  const a0 = Math.random() * 6.28;
-  for (let i = 0; i < count; i++) {
-    const n = count - i;
-    let piece = left / n;
-    if (n > 1) piece *= rnd(0.7, 1.3);
-    piece = Math.min(piece, left - CFG.popMinPiece * (n - 1) * 0.5);
-    left -= piece;
-    splitCell(c, a0 + i * 6.2832 / count + rnd(-0.2, 0.2), Math.sqrt(piece * 100), CFG.splitBoost * rnd(0.55, 1));
+  for (const m of splits) {
+    const size = Math.sqrt(m * 100), rest = c.r * c.r - size * size;
+    if (!(rest > 0) || Math.sqrt(rest) < CFG.decayMinSize) continue;
+    c.r = Math.sqrt(rest);
+    splitCell(c, Math.random() * 6.2832, size, CFG.splitBoost * Math.pow(size, 0.0122));
   }
 }
 
@@ -423,7 +452,7 @@ function botNames() {
   const used = new Set();
   for (const p of players) used.add(p.name);
   const free = BOT_NAMES.filter((n) => !used.has(n));
-  return free.length ? free[Math.floor(Math.random() * free.length)] : 'Bot ' + Math.floor(Math.random() * 900 + 100);
+  return free.length ? free[Math.floor(Math.random() * free.length)] : BOT_NAMES[Math.floor(Math.random() * BOT_NAMES.length)];
 }
 
 //CLIENTS
@@ -487,6 +516,7 @@ function onMessage(cl, m) {
     if (CFG.debug) console.log(`[debug] ${cl.ip} handshake ok, protocol ${cl.proto}, client ${cl.pkey}`);
     return;
   }
+  if (m.length >= 4 && m[0] === 0x7e && m[1] === 0x43 && m[2] === 0x48 && m[3] === 0x54) { onChat(cl, m.subarray(4).toString('utf8')); return; }
   decrypt(cl, m);
   const op = m[0];
   if (CFG.debug && op !== 16) console.log(`[debug] ${cl.ip} packet ${op} (${m.length} bytes)`);
@@ -507,6 +537,116 @@ function onMessage(cl, m) {
   } else if (op === 1) { if (!p.cells.length) cl.spectate = true; }
   else if (op === 17) { if (p.split < 4) p.split++; }
   else if (op === 21) p.eject = true;
+}
+
+//CHAT & COMMANDS
+const CHAT_MAGIC = Buffer.from([0x7e, 0x43, 0x48, 0x54]);
+function chatSend(cl, obj) { if (cl.chat) cl.conn.send(Buffer.concat([CHAT_MAGIC, Buffer.from(JSON.stringify(obj), 'utf8')])); }
+function chatAll(obj) { for (const cl of clients) chatSend(cl, obj); }
+function sys(cl, text) { chatSend(cl, { t: 'sys', text }); }
+const pname = (p) => p.name || (p.bot ? 'Bot' : 'Spectator');
+const pmass = (p) => Math.round(p.cells.reduce((a, c) => a + c.r * c.r / 100, 0));
+
+function findPlayer(cl, q) {
+  if (!q) return cl.player;
+  const s = q.toLowerCase(), alive = [...players].filter((p) => p.cells.length);
+  return alive.find((p) => p.name.toLowerCase() === s) || alive.find((p) => p.name.toLowerCase().includes(s)) || null;
+}
+
+function teleport(p, x, y) {
+  x = clamp(x, -B + 50, B - 50); y = clamp(y, -B + 50, B - 50);
+  let cx = 0, cy = 0;
+  for (const c of p.cells) { cx += c.x; cy += c.y; }
+  cx /= p.cells.length; cy /= p.cells.length;
+  for (const c of p.cells) { c.x = clamp(x + (c.x - cx) * 0.3, -B + c.r / 2, B - c.r / 2); c.y = clamp(y + (c.y - cy) * 0.3, -B + c.r / 2, B - c.r / 2); c.boost = null; c.moved = tick; gridMove(c); }
+  p.mx = x; p.my = y;
+  if (p.client) { p.client.cx = x; p.client.cy = y; }
+}
+
+function setMass(p, mass) {
+  mass = clamp(mass, 10, 100000);
+  const cur = pmass(p) || 1, k = Math.sqrt(mass / cur);
+  for (const c of p.cells) { c.r = Math.min(CFG.maxSize, Math.max(CFG.decayMinSize, c.r * k)); c.moved = tick; }
+}
+
+const HELP = ['/login <password>', '/who', '/mass <n|+n|-n> [player]', '/tp [player]  (sin nombre: a donde apunta tu mouse)', '/bring <player>', '/kill [player]', '/kick <player>',
+  '/virus  (en tu mouse)', '/merge', '/bots <n>', '/say <texto>'];
+
+function onChat(cl, text) {
+  const now = Date.now();
+  cl.chat = true;
+  text = text.replace(/[\u0000-\u001f]/g, '').trim();
+  if (!text || text.length > 160) return;
+  if (text === '/hello') return;
+  if (now - (cl.chatT || 0) < 400) return;
+  cl.chatT = now;
+  const p = cl.player;
+  if (text[0] !== '/') { chatAll({ t: 'msg', from: pname(p), admin: !!cl.admin, text }); return; }
+  const [cmd, ...rest] = text.slice(1).split(/\s+/);
+  const arg = rest.join(' ');
+  const c = cmd.toLowerCase();
+  if (c === 'login') {
+    if (!CFG.admin) return sys(cl, 'Admin is disabled on this server (no password set).');
+    if (arg === CFG.admin) { cl.admin = true; return sys(cl, 'Logged in as admin. Type /help for commands.'); }
+    return sys(cl, 'Wrong password.');
+  }
+  if (c === 'help') return sys(cl, cl.admin ? HELP.join('  |  ') : '/login <password>  |  /who');
+  if (c === 'who') {
+    const list = [...players].filter((q) => q.cells.length && !q.bot).map((q) => `${pname(q)} (${pmass(q)})`);
+    return sys(cl, `${clients.size} online: ` + (list.join(', ') || 'nobody alive'));
+  }
+  if (!cl.admin) return sys(cl, 'Admin only. Use /login <password>.');
+  if (c === 'mass') {
+    const m = /^([+-]?)(\d+)$/.exec(rest[0] || '');
+    if (!m) return sys(cl, 'Usage: /mass <n|+n|-n> [player]');
+    const t = findPlayer(cl, rest.slice(1).join(' '));
+    if (!t || !t.cells.length) return sys(cl, 'Player not found or not alive.');
+    const n = Number(m[2]);
+    setMass(t, m[1] === '+' ? pmass(t) + n : m[1] === '-' ? pmass(t) - n : n);
+    return sys(cl, `${pname(t)} mass: ${pmass(t)}`);
+  }
+  if (c === 'tp') {
+    if (!p.cells.length) return sys(cl, 'You are not alive.');
+    if (!arg) { teleport(p, p.mx, p.my); return; }
+    const t = findPlayer(cl, arg);
+    if (!t || !t.cells.length) return sys(cl, 'Player not found or not alive.');
+    teleport(p, t.cells[0].x, t.cells[0].y);
+    return sys(cl, `Teleported to ${pname(t)}.`);
+  }
+  if (c === 'bring') {
+    const t = findPlayer(cl, arg);
+    if (!t || !t.cells.length || !p.cells.length) return sys(cl, 'Player not found, or one of you is not alive.');
+    teleport(t, p.cells[0].x, p.cells[0].y);
+    return sys(cl, `Brought ${pname(t)}.`);
+  }
+  if (c === 'kill') {
+    const t = findPlayer(cl, arg);
+    if (!t || !t.cells.length) return sys(cl, 'Player not found or not alive.');
+    for (const cell of t.cells.slice()) delNode(cell);
+    return sys(cl, `Killed ${pname(t)}.`);
+  }
+  if (c === 'kick') {
+    const t = findPlayer(cl, arg);
+    if (!t || !t.client) return sys(cl, 'Player not found (bots cannot be kicked).');
+    t.client.conn.end('kicked');
+    return sys(cl, `Kicked ${pname(t)}.`);
+  }
+  if (c === 'virus') {
+    if (virusCount >= CFG.virusMax) return sys(cl, 'Too many viruses.');
+    addNode(T_VIRUS, clamp(p.mx, -B + 100, B - 100), clamp(p.my, -B + 100, B - 100), CFG.virusSize, [51, 255, 51]);
+    return;
+  }
+  if (c === 'merge') { for (const cell of p.cells) cell.born = -1e9; return sys(cl, 'Your cells can merge now.'); }
+  if (c === 'bots') {
+    const n = Number(rest[0]);
+    if (!(n >= 0 && n <= 200)) return sys(cl, 'Usage: /bots <0-200>');
+    CFG.bots = n;
+    let extra = [...players].filter((q) => q.bot).length - n;
+    for (const q of [...players]) { if (extra <= 0) break; if (q.bot) { for (const cell of q.cells.slice()) delNode(cell); players.delete(q); extra--; } }
+    return sys(cl, `Bots: ${n}`);
+  }
+  if (c === 'say') { if (arg) chatAll({ t: 'msg', from: 'Server', admin: true, text: arg }); return; }
+  return sys(cl, 'Unknown command. /help');
 }
 
 function viewOf(cl) {
