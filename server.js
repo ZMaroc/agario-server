@@ -27,7 +27,7 @@ const CFG = {
   border: 6364,                       // 7071 * 0.9  (mapa 10% mas pequeno)
   viewW: 1920, viewH: 1080, viewMult: 2.2,
   foodAmount: 1215, foodSpawnPerTick: 12, foodMin: 10, foodMax: 20,   // 1500 * 0.81 (misma densidad de comida)
-  virusAmount: 24, virusMax: 49, virusSize: 100, virusFeed: 7, virusShot: 780,   // 30/60 * 0.81
+  virusAmount: 24, virusMax: 49, virusSize: 100, virusFeed: 7, virusShot: 580,   // 30/60 * 0.81
   virusEatRatio: 1.1533,              // un virus solo te revienta si tu masa > 133% de la suya (sqrt(1.33) en radio)
   virusPieceMass: 36, virusBigMass: 466,   // masa de cada pedazo pequeno al reventar / masa sobrante para partirse en trozos grandes
   startSize: 114.89, maxSize: 1500, maxCells: 16, minSplitSize: 59.16, minEjectSize: 59.16,
@@ -409,6 +409,7 @@ function stepMoving() {
       gridQuery(n.x - 200, n.y - 200, n.x + 200, n.y + 200, (v) => { if (v.type === T_VIRUS) found.push(v); });
       for (const v of found) {
         if (v.dead || Math.hypot(v.x - n.x, v.y - n.y) >= v.r) continue;
+        if (virusCount >= CFG.virusMax) continue;   // como en Ogar: con el maximo de virus, las masas lanzadas los atraviesan
         const ang = n.boost ? Math.atan2(n.boost.dy, n.boost.dx) : Math.random() * 6.28;
         v.r = Math.sqrt(v.r * v.r + n.r * n.r); v.moved = tick;
         v.feed = (v.feed || 0) + 1;
