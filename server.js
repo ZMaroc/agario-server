@@ -29,14 +29,15 @@ const CFG = {
   viewW: 1920, viewH: 1080, viewMult: 2.2,
   foodAmount: 1500, foodSpawnPerTick: 12, foodMin: 10, foodMax: 20,
   virusAmount: 30, virusMax: 60, virusSize: 100, virusFedSize: 141.4, virusShot: 780,
-  startSize: 114.89, maxSize: 1500, maxCells: 16,
+  startSize: 223.61, botStartSize: 141.42, // masa inicial: jugadores 500, bots 200 (masa = r*r/100)
+  maxSize: 1500, maxCells: 16,
   minSplitSize: 59.16, minEjectSize: 59.16, // masa minima 35 (masa = r*r/100 -> r = sqrt(35*100))
   splitBoost: 780, ejectSize: 36.06, ejectLoss: 1800, ejectBoost: 780, ejectCooldown: 2, ejectMax: 2000,
   eatRatio: 1.118, eatOverlap: 0.4,
   mergeSec: 30, mergeSizeK: 0.2,
   decayPerSec: 0.002, decayMinSize: 32,
   speedK: 2.2 * 40, speedPow: -0.439,
-  bots: 15, botRespawnTicks: 50,
+  bots: 40, botRespawnTicks: 50,
   leaderboardTicks: 25, nameMax: 15,
 };
 
@@ -137,6 +138,7 @@ let eatenNow = new Map();
 let moving = new Set();
 
 const rnd = (a, b) => a + Math.random() * (b - a);
+const massOf = (r) => r * r / 100;
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const gkey = (x, y) => (Math.floor(x / GS) + GOFF) * GW + Math.floor(y / GS) + GOFF;
 
@@ -233,9 +235,10 @@ function newPlayer(name, bot) {
 
 function spawnPlayer(p) {
   if (p.cells.length) return null;
-  const s = freeSpot(CFG.startSize);
+  const r0 = p.bot ? CFG.botStartSize : CFG.startSize;
+  const s = freeSpot(r0);
   p.color = color();
-  const c = addNode(T_PLAYER, s.x, s.y, CFG.startSize, p.color, p);
+  const c = addNode(T_PLAYER, s.x, s.y, r0, p.color, p);
   p.mx = s.x; p.my = s.y;
   return c;
 }
@@ -277,14 +280,13 @@ function popCell(c) {
   const p = c.owner;
   const room = CFG.maxCells - p.cells.length;
   if (room <= 0) return;
-  const mass = c.r * c.r / 100;
-  const count = Math.min(room, Math.floor(mass * 0.6 / 20));
+  const mass = massOf(c.r);
+  const count = Math.min(room, Math.floor(mass / 35) - 1); // trozos nuevos: el maximo posible, cada trozo >= 35 de masa
   if (count < 1) return;
-  const piece = mass * 0.6 / count;
-  c.r = Math.sqrt((mass - piece * count) * 100);
+  c.r = Math.sqrt(mass / (count + 1) * 100); // todos los trozos (el original + los nuevos) quedan con la misma masa
   c.born = tick;
   const a0 = Math.random() * 6.28;
-  for (let i = 0; i < count; i++) splitCell(c, a0 + i * 6.2832 / count, Math.sqrt(piece * 100), CFG.splitBoost * 0.85);
+  for (let i = 0; i < count; i++) splitCell(c, a0 + i * 6.2832 / count, c.r, CFG.splitBoost * 0.85);
 }
 
 function canMerge(c) { return tick - c.born >= Math.max(CFG.mergeSec, c.r * CFG.mergeSizeK) * 25; }
@@ -431,7 +433,6 @@ function botNames() {
 
 //COMMANDS
 // Se escriben en el chat del juego (/login 6767) o, con el userscript, en la consola F12: cmd('/login 6767')
-const massOf = (r) => r * r / 100;
 const totalMass = (p) => p.cells.reduce((s, c) => s + massOf(c.r), 0);
 const fmt = (v) => String(Math.round(v * 10) / 10);
 
