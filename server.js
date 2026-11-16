@@ -19,11 +19,11 @@ const CFG = {
   viewW: 1920, viewH: 1080, viewMult: 2.2,
   foodAmount: 1500, foodSpawnPerTick: 12, foodMin: 10, foodMax: 20,
   virusAmount: 30, virusMax: 60, virusSize: 100, virusFeeds: 7, virusShot: 780, virusEatMassRatio: 1.3225, popMaxPiece: 60,
-  startSize: 223.61, botStartSize: 141.42, maxSize: 1500, maxCells: 16, minSplitSize: 59.16, minEjectSize: 59.16,
+  startSize: 223.61, botStartSize: 141.42, maxSize: 1500, maxCells: 16, minSplitSize: 60, minEjectSize: 56.57, minSize: 31.62,
   splitBoost: 780, ejectSize: 36.06, ejectLoss: 1800, ejectBoost: 780, ejectCooldown: 3, ejectMax: 2000,
   eatRatio: 1.15, eatOverlap: 1 / 3,
   mergeSec: 30, mergeSizeK: 0.2,
-  decayPerSec: 0.002, decayMinSize: 32,
+  decayPerSec: 0.002, decayMinSize: 31.62,
   speedK: 2.2 * 40, speedPow: -0.45,
   bots: 50, botRespawnTicks: 50,
   admin: process.env.ADMIN_PASSWORD || 'maroc1234',
@@ -253,16 +253,21 @@ function splitCell(c, ang, r, boost) {
   return n;
 }
 
+// Split / movement / collisions follow MultiOgarII (vanilla-like physics).
+function splitPlayerCell(c, ang, mass) {
+  const size = Math.sqrt(mass * 100), rest = c.r * c.r - size * size;
+  if (!(rest > 0) || Math.sqrt(rest) < CFG.minSize) return;
+  c.r = Math.sqrt(rest);
+  splitCell(c, ang, size, CFG.splitBoost * Math.pow(size, 0.0122));
+}
+
 function playerSplit(p) {
-  const list = p.cells.slice().sort((a, b) => b.r - a.r);
-  for (const c of list) {
+  for (const c of p.cells.slice()) {
     if (p.cells.length >= CFG.maxCells) break;
     if (c.r < CFG.minSplitSize) continue;
     let dx = p.mx - c.x, dy = p.my - c.y;
     if (dx * dx + dy * dy < 1) { dx = 1; dy = 0; }
-    c.r /= Math.SQRT2;
-    c.born = tick;
-    splitCell(c, Math.atan2(dy, dx), c.r, CFG.splitBoost * Math.pow(c.r, 0.0122));
+    splitPlayerCell(c, Math.atan2(dy, dx), c.r * c.r / 200);
   }
 }
 
@@ -276,7 +281,7 @@ function playerEject(p) {
     if (d < 1) { dx = 1; dy = 0; } else { dx /= d; dy /= d; }
     c.r = Math.sqrt(c.r * c.r - CFG.ejectLoss);
     const e = addNode(T_EJECT, c.x + dx * c.r, c.y + dy * c.r, CFG.ejectSize, p.color, p);
-    setBoost(e, Math.atan2(dy, dx) + rnd(-0.12, 0.12), CFG.ejectBoost);
+    setBoost(e, Math.atan2(dy, dx) + rnd(-0.3, 0.3), CFG.ejectBoost);
   }
 }
 
@@ -305,7 +310,6 @@ function popCell(c) {
       massLeft -= splitMass;
     }
   }
-  c.born = tick;
   for (const m of splits) {
     const size = Math.sqrt(m * 100), rest = c.r * c.r - size * size;
     if (!(rest > 0) || Math.sqrt(rest) < CFG.decayMinSize) continue;
@@ -316,42 +320,46 @@ function popCell(c) {
 
 function canMerge(c) { return tick - c.born >= Math.max(CFG.mergeSec, c.r * CFG.mergeSizeK) * 25; }
 
+function rigidPush(a, b) {
+  const dx = b.x - a.x, dy = b.y - a.y, d = Math.hypot(dx, dy);
+  if (d === 0) return;
+  const push = (a.r + b.r - d) / d;
+  if (push <= 0) return;
+  const ma = a.r * a.r, mb = b.r * b.r, sum = ma + mb, r1 = push * ma / sum, r2 = push * mb / sum;
+  a.x -= dx * r2; a.y -= dy * r2;
+  b.x += dx * r1; b.y += dy * r1;
+}
+
 function movePlayer(p) {
-  for (const c of p.cells) {
+  const cs = p.cells;
+  for (const c of cs.slice()) {
+    if (c.dead) continue;
+    for (const o of cs) {
+      if (o === c || o.dead) continue;
+      if (tick - c.born < 13 || tick - o.born < 13) continue;
+      if (canMerge(c) && canMerge(o)) continue;
+      if (Math.abs(o.x - c.x) > c.r + o.r || Math.abs(o.y - c.y) > c.r + o.r) continue;
+      rigidPush(c, o);
+    }
     const dx = p.mx - c.x, dy = p.my - c.y, d = Math.hypot(dx, dy);
     if (d >= 1) {
       const s = Math.min(d, CFG.speedK * Math.pow(c.r, CFG.speedPow)) / d;
       c.x += dx * s; c.y += dy * s;
     }
     if (c.boost) stepBoost(c);
+    else { const m = c.r / 2; c.x = clamp(c.x, -B + m, B - m); c.y = clamp(c.y, -B + m, B - m); }
     c.moved = tick;
-  }
-  const cs = p.cells;
-  for (let i = 0; i < cs.length; i++) for (let j = i + 1; j < cs.length; j++) {
-    const a = cs[i], b = cs[j];
-    if (tick - a.born < 13 && a.boost || tick - b.born < 13 && b.boost) continue;
-    if (canMerge(a) && canMerge(b)) continue;
-    let dx = b.x - a.x, dy = b.y - a.y, d = Math.hypot(dx, dy);
-    const need = a.r + b.r;
-    if (d >= need) continue;
-    if (d < 0.01) { dx = 1; dy = 0; d = 1; }
-    const push = (need - d) / d, ma = a.r * a.r, mb = b.r * b.r, ka = mb / (ma + mb), kb = ma / (ma + mb);
-    a.x -= dx * push * ka; a.y -= dy * push * ka;
-    b.x += dx * push * kb; b.y += dy * push * kb;
-  }
-  for (const c of cs) {
-    const m = c.r / 2;
-    c.x = clamp(c.x, -B + m, B - m); c.y = clamp(c.y, -B + m, B - m);
-    if (c.r > CFG.maxSize) {
-      if (cs.length < CFG.maxCells) { c.r /= Math.SQRT2; c.born = tick; splitCell(c, Math.random() * 6.28, c.r, CFG.splitBoost * 0.6); }
-      else c.r = CFG.maxSize;
+    if (c.r >= CFG.maxSize) {
+      if (cs.length >= CFG.maxCells) c.r = CFG.maxSize;
+      else splitPlayerCell(c, Math.random() * 6.2832, c.r * c.r / 200);
     }
     gridMove(c);
   }
 }
 
 function eat(eater, n) {
-  eater.r = Math.sqrt(eater.r * eater.r + n.r * n.r);
+  const gain = eater.type === T_PLAYER && n.type === T_PLAYER && eater.r >= 250 && n.r <= 41 ? 0 : n.r * n.r;
+  eater.r = Math.sqrt(eater.r * eater.r + gain);
   eater.moved = tick;
   delNode(n, eater);
 }
@@ -380,7 +388,7 @@ function collide() {
       if (n === c || n.dead || c.dead || n.r > c.r) continue;
       const d = Math.hypot(n.x - c.x, n.y - c.y);
       if (d >= c.r - n.r * CFG.eatOverlap) continue;
-      if (n.owner === c.owner) { if (canMerge(c) && canMerge(n)) eat(c, n); }
+      if (n.owner === c.owner) { if (tick - c.born >= 13 && tick - n.born >= 13 && canMerge(c) && canMerge(n)) eat(c, n); }
       else if (c.r > n.r * CFG.eatRatio) eat(c, n);
     }
   }
