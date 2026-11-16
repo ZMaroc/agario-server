@@ -13,7 +13,7 @@ const CFG = {
   host: '0.0.0.0',
   cert: '', key: '',
   name: 'Private FFA',
-  maxClients: 200, maxPerIp: 4,
+  maxClients: 200, maxPerIp: 12,
   tickMs: 40,
   border: 7071,
   viewW: 1920, viewH: 1080, viewMult: 2.2,
@@ -28,6 +28,8 @@ const CFG = {
   bots: 50, botRespawnTicks: 50,
   admin: process.env.ADMIN_PASSWORD || 'maroc1234',
   leaderboardTicks: 25, nameMax: 15,
+  freeRoamSpeed: 60, freeRoamSize: 600,
+  minionMax: 100, minionStartSize: 70.71,
   debug: 0,
 };
 
@@ -237,9 +239,9 @@ function newPlayer(name, bot) {
 
 function spawnPlayer(p) {
   if (p.cells.length) return null;
-  const r0 = p.bot ? CFG.botStartSize : CFG.startSize;
+  const r0 = p.minion ? CFG.minionStartSize : p.bot ? CFG.botStartSize : CFG.startSize;
   const s = freeSpot(r0);
-  p.color = color();
+  p.color = p.minion ? p.owner.color : color();
   const c = addNode(T_PLAYER, s.x, s.y, r0, p.color, p);
   p.mx = s.x; p.my = s.y;
   return c;
@@ -536,6 +538,7 @@ function onMessage(cl, m) {
     cl.spawnT = tick; cl.spectate = false;
     spawnPlayer(p);
   } else if (op === 1) { if (!p.cells.length) cl.spectate = true; }
+  else if (op === 18) { if (cl.spectate) { cl.free = !cl.free; if (cl.free) { cl.cx = clamp(cl.cx, -B, B); cl.cy = clamp(cl.cy, -B, B); } } }
   else if (op === 17) { if (p.split < 4) p.split++; }
   else if (op === 21) p.eject = true;
 }
@@ -550,7 +553,7 @@ const pmass = (p) => Math.round(p.cells.reduce((a, c) => a + c.r * c.r / 100, 0)
 
 function findPlayer(cl, q) {
   if (!q) return cl.player;
-  const s = q.toLowerCase(), alive = [...players].filter((p) => p.cells.length);
+  const s = q.toLowerCase(), alive = [...players].filter((p) => p.cells.length && !p.minion);
   return alive.find((p) => p.name.toLowerCase() === s) || alive.find((p) => p.name.toLowerCase().includes(s)) || null;
 }
 
@@ -574,7 +577,8 @@ const HELP_ALL = ['/help', '/who', '/login <password>'];
 const HELP_ADMIN = [
   'Mass:  /mass <n>  |  /mass +<n>  |  /mass -<n>  |  /mass <n> <player>',
   'Move:  /tp (click mode)  |  /tp <player>  |  /bring <player>',
-  'Players:  /kill [player]  |  /kick <player>  |  /merge',
+  'Players:  /kill [player]  |  /kick <player>  |  /merge  |  /fullmap',
+  'Minions:  /minions <0-100>  (E = split, R = feed; they follow your mouse)',
   'World:  /virus  |  /bots <0-200>  |  /map <small|medium|large>',
   'Chat:  /say <text>',
 ];
@@ -600,8 +604,9 @@ function onChat(cl, text) {
   text = text.replace(/[\u0000-\u001f]/g, '').trim();
   if (!text || text.length > 160) return;
   if (text === '/hello') return;
-  if (now - (cl.chatT || 0) < 400) return;
-  cl.chatT = now;
+  const quick = text === '/msplit' || text === '/meject';
+  if (!quick && now - (cl.chatT || 0) < 400) return;
+  if (!quick) cl.chatT = now;
   const p = cl.player;
   if (text[0] !== '/') { chatAll({ t: 'msg', from: pname(p), admin: !!cl.admin, text }); return; }
   const [cmd, ...rest] = text.slice(1).split(/\s+/);
@@ -662,13 +667,26 @@ function onChat(cl, text) {
     addNode(T_VIRUS, clamp(p.mx, -B + 100, B - 100), clamp(p.my, -B + 100, B - 100), CFG.virusSize, [51, 255, 51]);
     return;
   }
+  if (c === 'minions') {
+    const n = Number(rest[0]);
+    if (!(n >= 0 && n <= CFG.minionMax)) return sys(cl, `Usage: /minions <0-${CFG.minionMax}>`);
+    const mine = [...players].filter((q) => q.minion && q.owner === p);
+    while (mine.length > n) { const q = mine.pop(); for (const cell of q.cells.slice()) delNode(cell); players.delete(q); }
+    while (mine.length < n) { const q = newPlayer(p.name, true); q.minion = true; q.owner = p; mine.push(q); }
+    return sys(cl, `Minions: ${n}`);
+  }
+  if (c === 'msplit' || c === 'meject') {
+    for (const q of players) if (q.minion && q.owner === p && q.cells.length) { if (c === 'msplit') { if (q.split < 2) q.split++; } else q.eject = true; }
+    return;
+  }
   if (c === 'merge') { for (const cell of p.cells) cell.born = -1e9; return sys(cl, 'Your cells can merge now.'); }
+  if (c === 'fullmap') { cl.fullMap = !cl.fullMap; return sys(cl, cl.fullMap ? 'Full map on: you receive the whole map (zoom out to see it).' : 'Full map off.'); }
   if (c === 'bots') {
     const n = Number(rest[0]);
     if (!(n >= 0 && n <= 200)) return sys(cl, 'Usage: /bots <0-200>');
     CFG.bots = n;
     let extra = [...players].filter((q) => q.bot).length - n;
-    for (const q of [...players]) { if (extra <= 0) break; if (q.bot) { for (const cell of q.cells.slice()) delNode(cell); players.delete(q); extra--; } }
+    for (const q of [...players]) { if (extra <= 0) break; if (q.bot && !q.minion) { for (const cell of q.cells.slice()) delNode(cell); players.delete(q); extra--; } }
     return sys(cl, `Bots: ${n}`);
   }
   if (c === 'say') { if (arg) chatAll({ t: 'msg', from: 'Server', admin: true, text: arg }); return; }
@@ -688,6 +706,11 @@ function viewOf(cl) {
     for (const c of p.cells) { x += c.x; y += c.y; size += c.r; }
     x /= p.cells.length; y /= p.cells.length;
     cl.cx = x; cl.cy = y;
+  } else if (cl.spectate && cl.free) {
+    const dx = p.mx - cl.cx, dy = p.my - cl.cy, d = Math.hypot(dx, dy), step = Math.min(d, CFG.freeRoamSpeed);
+    if (d > 1) { cl.cx += dx / d * step; cl.cy += dy / d * step; }
+    cl.cx = clamp(cl.cx, -B, B); cl.cy = clamp(cl.cy, -B, B);
+    x = cl.cx; y = cl.cy; size = CFG.freeRoamSize;
   } else if (cl.spectate && top.length && top[0].cells.length) {
     const t = top[0];
     for (const c of t.cells) { x += c.x; y += c.y; size += c.r; }
@@ -696,6 +719,7 @@ function viewOf(cl) {
   } else { x = cl.cx; y = cl.cy; size = CFG.startSize; }
   const scale = Math.pow(Math.min(64 / size, 1), 0.4);
   cl.scale = scale;
+  if (cl.fullMap) return { x0: -B, y0: -B, x1: B, y1: B };
   const hw = CFG.viewW / scale / 2 * CFG.viewMult, hh = CFG.viewH / scale / 2 * CFG.viewMult;
   return { x0: x - hw, y0: y - hh, x1: x + hw, y1: y + hh };
 }
@@ -754,7 +778,7 @@ let top = [];
 function sendLeaderboard() {
   top = [];
   for (const p of players) {
-    if (!p.cells.length) continue;
+    if (!p.cells.length || p.minion) continue;
     p.score = 0;
     for (const c of p.cells) p.score += c.r * c.r;
     top.push(p);
@@ -775,7 +799,12 @@ function gameTick() {
   tick++;
   let bots = 0;
   for (const p of players) {
-    if (p.bot) {
+    if (p.minion) {
+      const o = p.owner;
+      if (!o.cells.length) { if (p.cells.length) for (const cell of p.cells.slice()) delNode(cell); continue; }
+      if (!p.cells.length) { if (tick - p.diedAt >= CFG.botRespawnTicks) { p.name = o.name; spawnPlayer(p); } continue; }
+      p.mx = o.mx; p.my = o.my;
+    } else if (p.bot) {
       bots++;
       if (!p.cells.length) { if (tick - p.diedAt >= CFG.botRespawnTicks) { p.name = botNames(); spawnPlayer(p); } continue; }
       if (tick >= p.think) { p.think = tick + 4 + Math.floor(Math.random() * 3); botThink(p); }
@@ -824,6 +853,7 @@ function onUpgrade(req, sock) {
     const left = (perIp.get(ip) || 1) - 1;
     if (left > 0) perIp.set(ip, left); else perIp.delete(ip);
     for (const c of cl.player.cells.slice()) delNode(c);
+    for (const q of [...players]) if (q.minion && q.owner === cl.player) { for (const cell of q.cells.slice()) delNode(cell); players.delete(q); }
     players.delete(cl.player);
     console.log(`[-] ${ip} disconnected (${clients.size} online)` + (CFG.debug ? ` reason: ${conn.why}` : ''));
   };
