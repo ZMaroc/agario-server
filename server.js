@@ -29,7 +29,7 @@ const CFG = {
   admin: process.env.ADMIN_PASSWORD || 'maroc1234',
   leaderboardTicks: 25, nameMax: 15,
   freeRoamSpeed: 60, freeRoamSize: 600,
-  minionMax: 100, minionStartSize: 70.71,
+  minionStartSize: 70.71,
   debug: 0,
 };
 
@@ -241,7 +241,7 @@ function spawnPlayer(p) {
   if (p.cells.length) return null;
   const r0 = p.minion ? CFG.minionStartSize : p.bot ? CFG.botStartSize : CFG.startSize;
   const s = freeSpot(r0);
-  p.color = p.minion ? p.owner.color : color();
+  p.color = color();
   const c = addNode(T_PLAYER, s.x, s.y, r0, p.color, p);
   p.mx = s.x; p.my = s.y;
   return c;
@@ -544,6 +544,7 @@ function onMessage(cl, m) {
 }
 
 //CHAT & COMMANDS
+const SKINS = [];
 const CHAT_MAGIC = Buffer.from([0x7e, 0x43, 0x48, 0x54]);
 function chatSend(cl, obj) { if (cl.chat) cl.conn.send(Buffer.concat([CHAT_MAGIC, Buffer.from(JSON.stringify(obj), 'utf8')])); }
 function chatAll(obj) { for (const cl of clients) chatSend(cl, obj); }
@@ -578,7 +579,7 @@ const HELP_ADMIN = [
   'Mass:  /mass <n>  |  /mass +<n>  |  /mass -<n>  |  /mass <n> <player>',
   'Move:  /tp (click mode)  |  /tp <player>  |  /bring <player>',
   'Players:  /kill [player]  |  /kick <player>  |  /merge  |  /fullmap',
-  'Minions:  /minions <0-100>  (E = split, R = feed; they follow your mouse)',
+  'Minions:  /minions <count>  (E = split, R = feed; they follow your mouse)',
   'World:  /virus  |  /bots <0-200>  |  /map <small|medium|large>',
   'Chat:  /say <text>',
 ];
@@ -602,8 +603,9 @@ function onChat(cl, text) {
   const now = Date.now();
   cl.chat = true;
   text = text.replace(/[\u0000-\u001f]/g, '').trim();
-  if (!text || text.length > 160) return;
+  if (!text || text.length > (text.startsWith('/skins ') ? 65536 : 160)) return;
   if (text === '/hello') return;
+  if (text.startsWith('/skins ')) { for (const id of text.slice(7).split(',')) { const v = id.trim(); if (/^%?[\w-]{1,40}$/.test(v) && SKINS.length < 5000 && !SKINS.includes(v)) SKINS.push(v); } return; }
   const quick = text === '/msplit' || text === '/meject';
   if (!quick && now - (cl.chatT || 0) < 400) return;
   if (!quick) cl.chatT = now;
@@ -669,11 +671,11 @@ function onChat(cl, text) {
   }
   if (c === 'minions') {
     const n = Number(rest[0]);
-    if (!(n >= 0 && n <= CFG.minionMax)) return sys(cl, `Usage: /minions <0-${CFG.minionMax}>`);
+    if (!(Number.isInteger(n) && n >= 0)) return sys(cl, 'Usage: /minions <count>');
     const mine = [...players].filter((q) => q.minion && q.owner === p);
     while (mine.length > n) { const q = mine.pop(); for (const cell of q.cells.slice()) delNode(cell); players.delete(q); }
-    while (mine.length < n) { const q = newPlayer(p.name, true); q.minion = true; q.owner = p; mine.push(q); }
-    return sys(cl, `Minions: ${n}`);
+    while (mine.length < n) { const q = newPlayer('Minion', true); q.minion = true; q.owner = p; mine.push(q); }
+    return sys(cl, `Minions: ${n}` + (SKINS.length ? '' : ' (no skins received yet)'));
   }
   if (c === 'msplit' || c === 'meject') {
     for (const q of players) if (q.minion && q.owner === p && q.cells.length) { if (c === 'msplit') { if (q.split < 2) q.split++; } else q.eject = true; }
@@ -731,11 +733,14 @@ function writeNode(w, n, full) {
   else if (n.type === T_EJECT) f |= 0x20;
   else if (n.type === T_FOOD) { f |= 0x80; ext |= 0x01; }
   const name = full && n.type === T_PLAYER && n.owner.name;
+  const skin = full && n.type === T_PLAYER && n.owner.skin;
   if (full) f |= 0x02;
+  if (skin) f |= 0x04;
   if (name) f |= 0x08;
   w.u8(f);
   if (f & 0x80) w.u8(ext);
   if (full) { w.u8(n.color[0]); w.u8(n.color[1]); w.u8(n.color[2]); }
+  if (skin) w.str(skin);
   if (name) w.str(name);
 }
 
@@ -801,9 +806,8 @@ function gameTick() {
   for (const p of players) {
     if (p.minion) {
       const o = p.owner;
-      if (!o.cells.length) { if (p.cells.length) for (const cell of p.cells.slice()) delNode(cell); continue; }
-      if (!p.cells.length) { if (tick - p.diedAt >= CFG.botRespawnTicks) { p.name = o.name; spawnPlayer(p); } continue; }
-      p.mx = o.mx; p.my = o.my;
+      if (!p.cells.length) { if (tick - p.diedAt >= CFG.botRespawnTicks) { p.skin = SKINS.length ? SKINS[Math.floor(Math.random() * SKINS.length)] : ''; spawnPlayer(p); } continue; }
+      if (o.cells.length) { p.mx = o.mx; p.my = o.my; }
     } else if (p.bot) {
       bots++;
       if (!p.cells.length) { if (tick - p.diedAt >= CFG.botRespawnTicks) { p.name = botNames(); spawnPlayer(p); } continue; }
